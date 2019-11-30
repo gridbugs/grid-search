@@ -222,21 +222,21 @@ impl Context {
 
     pub fn best_search_path<B: BestSearch>(
         &mut self,
-        best_search: &mut B,
+        mut best_search: B,
         start: Coord,
         path: &mut Path,
     ) {
-        self.best_search_core(best_search, start);
+        self.best_search_core(&mut best_search, start);
         let end = best_search.best_coord().unwrap_or(start);
         self.build_path_to(end, path);
     }
 
     pub fn best_search_first<B: BestSearch>(
         &mut self,
-        best_search: &mut B,
+        mut best_search: B,
         start: Coord,
     ) -> Option<CardinalDirection> {
-        self.best_search_core(best_search, start);
+        self.best_search_core(&mut best_search, start);
         let end = best_search.best_coord().unwrap_or(start);
         self.first_step_towards(end)
             .map(|step| CardinalDirection::from_unit_coord(step.in_direction.0))
