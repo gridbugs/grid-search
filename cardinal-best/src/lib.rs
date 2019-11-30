@@ -179,8 +179,8 @@ impl Context {
     fn consider_best<B: BestSearch>(&mut self, best_search: &mut B, step: Step, depth: Depth) {
         if let Some(seen_cell) = self.seen_set.get_mut(step.to_coord) {
             if seen_cell.count != self.count {
+                seen_cell.count = self.count;
                 if best_search.can_enter_updating_best(step.to_coord) {
-                    seen_cell.count = self.count;
                     seen_cell.in_direction = Some(step.in_direction);
                     if !best_search.is_at_max_depth(depth) {
                         self.queue.push_back((step, depth));
