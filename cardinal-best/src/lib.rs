@@ -22,6 +22,7 @@ struct SeenCell {
 }
 
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
+#[derive(Clone)]
 struct Step {
     to_coord: Coord,
     in_direction: Direction,
@@ -94,7 +95,7 @@ impl<'a> Iterator for PathIter<'a> {
 }
 
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Path {
     steps: VecDeque<Step>,
 }
