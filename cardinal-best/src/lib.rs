@@ -65,7 +65,7 @@ impl Serialize for Context {
 }
 
 #[cfg(feature = "serialize")]
-impl<'a> Deserialize<'a> for IndexToId {
+impl<'a> Deserialize<'a> for Context {
     fn deserialize<D: serde::Deserializer<'a>>(d: D) -> Result<Self, D::Error> {
         Deserialize::deserialize(d).map(Self::new)
     }
