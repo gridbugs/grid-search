@@ -2,8 +2,7 @@ use direction::CardinalDirection;
 use grid_2d::{Coord, Grid, Size};
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
-use std::collections::vec_deque;
-use std::collections::VecDeque;
+use std::collections::{vec_deque, VecDeque};
 
 const DIRECTIONS: [Direction; 4] = [
     Direction(Coord::new(0, 1)),

@@ -1,6 +1,7 @@
+use direction::CardinalDirection;
 use grid_2d::{Coord, Grid, Size};
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
+use std::collections::{vec_deque, BinaryHeap, VecDeque};
 
 const DIRECTIONS: [Direction; 4] = [
     Direction(Coord::new(0, 1)),
@@ -12,7 +13,7 @@ const DIRECTIONS: [Direction; 4] = [
 #[derive(Clone, Copy, Debug)]
 struct Direction(Coord);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Step {
     to_coord: Coord,
     in_direction: Direction,
@@ -83,17 +84,54 @@ struct SeenCell {
     in_direction: Option<Direction>,
 }
 
-pub struct Context {
-    count: u64,
-    seen_set: Grid<SeenCell>,
-    priority_queue: BinaryHeap<Node>,
-}
-
 pub trait PointToPointSearch {
     fn can_enter(&self, coord: Coord) -> bool;
 }
 
 struct Stop;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PathNode {
+    pub to_coord: Coord,
+    pub in_direction: CardinalDirection,
+}
+
+pub struct PathIter<'a> {
+    iter: vec_deque::Iter<'a, Step>,
+}
+
+impl<'a> Iterator for PathIter<'a> {
+    type Item = PathNode;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|step| PathNode {
+            to_coord: step.to_coord,
+            in_direction: CardinalDirection::from_unit_coord(step.in_direction.0),
+        })
+    }
+}
+
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
+#[derive(Default, Clone, Debug)]
+pub struct Path {
+    steps: VecDeque<Step>,
+}
+
+impl Path {
+    pub fn iter(&self) -> PathIter {
+        PathIter {
+            iter: self.steps.iter(),
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.steps.len()
+    }
+}
+
+pub struct Context {
+    count: u64,
+    seen_set: Grid<SeenCell>,
+    priority_queue: BinaryHeap<Node>,
+}
 
 impl Context {
     pub fn new(size: Size) -> Self {
@@ -106,6 +144,54 @@ impl Context {
             priority_queue: BinaryHeap::new(),
         }
     }
+
+    fn build_path_to(&self, end: Coord, path: &mut Path) {
+        let mut cell = self.seen_set.get(end).expect("path end out of bounds");
+        debug_assert_eq!(
+            cell.count, self.count,
+            "path end not visited in latest search"
+        );
+        let mut coord = end;
+        path.steps.clear();
+        while let Some(in_direction) = cell.in_direction {
+            let step = Step {
+                to_coord: coord,
+                in_direction,
+            };
+            path.steps.push_back(step);
+            coord = coord - in_direction.0;
+            cell = self.seen_set.get_checked(coord);
+            debug_assert_eq!(
+                cell.count, self.count,
+                "path includes cell not visited in latest search"
+            );
+        }
+    }
+
+    fn first_step_towards(&self, end: Coord) -> Option<Step> {
+        let mut cell = self.seen_set.get(end).expect("path end out of bounds");
+        debug_assert_eq!(
+            cell.count, self.count,
+            "path end not visited in latest search"
+        );
+        let mut coord = end;
+        let mut ret = None;
+        while let Some(in_direction) = cell.in_direction {
+            let step = Step {
+                to_coord: coord,
+                in_direction,
+            };
+            coord = coord - in_direction.0;
+            cell = self.seen_set.get_checked(coord);
+            debug_assert_eq!(
+                cell.count, self.count,
+                "path includes cell not visited in latest search"
+            );
+            ret = Some(step);
+        }
+        ret
+    }
+
     fn consider<P: PointToPointSearch>(
         &mut self,
         point_to_point_search: &P,
@@ -117,10 +203,10 @@ impl Context {
             if cell.count != self.count {
                 cell.count = self.count;
                 if point_to_point_search.can_enter(step.to_coord) {
+                    cell.in_direction = Some(step.in_direction);
                     if step.to_coord == goal {
                         return Some(Stop);
                     }
-                    cell.in_direction = Some(step.in_direction);
                     let heuristic = step.to_coord.manhattan_distance(goal);
                     let node = Node {
                         cost,
@@ -194,11 +280,33 @@ impl Context {
             if let Some(Stop) = self.consider(point_to_point_search, step.left(), next_cost, goal) {
                 return;
             }
-            if let Some(Step) = self.consider(point_to_point_search, step.right(), next_cost, goal)
+            if let Some(Stop) = self.consider(point_to_point_search, step.right(), next_cost, goal)
             {
                 return;
             }
         }
+    }
+
+    pub fn point_to_point_search_path<P: PointToPointSearch>(
+        &mut self,
+        point_to_point_search: P,
+        start: Coord,
+        goal: Coord,
+        path: &mut Path,
+    ) {
+        self.point_to_point_search_core(&point_to_point_search, start, goal);
+        self.build_path_to(goal, path);
+    }
+
+    pub fn point_to_point_search_first<P: PointToPointSearch>(
+        &mut self,
+        point_to_point_search: P,
+        start: Coord,
+        goal: Coord,
+    ) -> Option<CardinalDirection> {
+        self.point_to_point_search_core(&point_to_point_search, start, goal);
+        self.first_step_towards(goal)
+            .map(|step| CardinalDirection::from_unit_coord(step.in_direction.0))
     }
 }
 
@@ -251,19 +359,6 @@ mod test {
         }
     }
 
-    const GRID_A: &[&str] = &[
-        "..........",
-        ".......*..",
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        "..........",
-        ".@........",
-        "..........",
-    ];
-
     struct Search<'a> {
         grid: &'a Grid<Cell>,
     }
@@ -281,11 +376,47 @@ mod test {
         }
     }
 
+    const GRID_A: &[&str] = &[
+        "..........",
+        ".......*..",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        ".@........",
+        "..........",
+    ];
+
     #[test]
     fn grid_a() {
         let Test { grid, start, goal } = str_slice_to_test(GRID_A);
         let mut ctx = Context::new(grid.size());
-        let search = Search { grid: &grid };
-        ctx.point_to_point_search_core(&search, start, goal);
+        let mut path = Path::default();
+        ctx.point_to_point_search_path(Search { grid: &grid }, start, goal, &mut path);
+        assert_eq!(path.len(), 13);
+    }
+
+    const GRID_B: &[&str] = &[
+        "..........",
+        ".......#..",
+        ".......#..",
+        "....*..#..",
+        "########..",
+        "..........",
+        "..........",
+        "..........",
+        ".@........",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_b() {
+        let Test { grid, start, goal } = str_slice_to_test(GRID_B);
+        let mut ctx = Context::new(grid.size());
+        let mut path = Path::default();
+        ctx.point_to_point_search_path(Search { grid: &grid }, start, goal, &mut path);
+        assert_eq!(path.len(), 22);
     }
 }
