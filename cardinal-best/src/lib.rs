@@ -112,17 +112,9 @@ impl Path {
 }
 
 pub trait BestSearch {
-    type World;
-    type State;
     fn is_at_max_depth(&self, depth: Depth) -> bool;
-    fn init_state(&self, state: &mut Self::State, start: Coord);
-    fn can_enter_updating_best(
-        &self,
-        grid: &Self::World,
-        coord: Coord,
-        state: &mut Self::State,
-    ) -> bool;
-    fn best_coord(&self, state: &Self::State) -> Coord;
+    fn can_enter_updating_best(&mut self, coord: Coord) -> bool;
+    fn best_coord(&self) -> Option<Coord>;
 }
 
 impl Context {
@@ -184,17 +176,10 @@ impl Context {
         ret
     }
 
-    fn consider_best<B: BestSearch>(
-        &mut self,
-        best_search: &B,
-        step: Step,
-        depth: Depth,
-        world: &B::World,
-        state: &mut B::State,
-    ) {
+    fn consider_best<B: BestSearch>(&mut self, best_search: &mut B, step: Step, depth: Depth) {
         if let Some(seen_cell) = self.seen_set.get_mut(step.to_coord) {
             if seen_cell.count != self.count {
-                if best_search.can_enter_updating_best(world, step.to_coord, state) {
+                if best_search.can_enter_updating_best(step.to_coord) {
                     seen_cell.count = self.count;
                     seen_cell.in_direction = Some(step.in_direction);
                     if !best_search.is_at_max_depth(depth) {
@@ -205,19 +190,15 @@ impl Context {
         }
     }
 
-    fn best_search_core<B: BestSearch>(
-        &mut self,
-        best_search: &B,
-        start: Coord,
-        world: &B::World,
-        state: &mut B::State,
-    ) {
+    fn best_search_core<B: BestSearch>(&mut self, best_search: &mut B, start: Coord) {
         self.count += 1;
         self.queue.clear();
         let start_cell = self.seen_set.get_checked_mut(start);
         start_cell.count = self.count;
         start_cell.in_direction = None;
-        best_search.init_state(state, start);
+        if !best_search.can_enter_updating_best(start) {
+            return;
+        }
         if best_search.is_at_max_depth(0) {
             return;
         }
@@ -226,42 +207,38 @@ impl Context {
                 to_coord: start + in_direction.0,
                 in_direction,
             };
-            self.consider_best(best_search, step, 1, world, state);
+            self.consider_best(best_search, step, 1);
         }
         if best_search.is_at_max_depth(1) {
             return;
         }
         while let Some((step, depth)) = self.queue.pop_front() {
             let next_depth = depth + 1;
-            self.consider_best(best_search, step.forward(), next_depth, world, state);
-            self.consider_best(best_search, step.left(), next_depth, world, state);
-            self.consider_best(best_search, step.right(), next_depth, world, state);
+            self.consider_best(best_search, step.forward(), next_depth);
+            self.consider_best(best_search, step.left(), next_depth);
+            self.consider_best(best_search, step.right(), next_depth);
         }
     }
 
     pub fn best_search_path<B: BestSearch>(
         &mut self,
-        best_search: &B,
+        best_search: &mut B,
         start: Coord,
-        world: &B::World,
-        state: &mut B::State,
         path: &mut Path,
     ) {
-        self.best_search_core(best_search, start, world, state);
-        let best_coord = best_search.best_coord(state);
-        self.build_path_to(best_coord, path);
+        self.best_search_core(best_search, start);
+        let end = best_search.best_coord().unwrap_or(start);
+        self.build_path_to(end, path);
     }
 
     pub fn best_search_first<B: BestSearch>(
         &mut self,
-        best_search: &B,
+        best_search: &mut B,
         start: Coord,
-        world: &B::World,
-        state: &mut B::State,
     ) -> Option<CardinalDirection> {
-        self.best_search_core(best_search, start, world, state);
-        let best_coord = best_search.best_coord(state);
-        self.first_step_towards(best_coord)
+        self.best_search_core(best_search, start);
+        let end = best_search.best_coord().unwrap_or(start);
+        self.first_step_towards(end)
             .map(|step| CardinalDirection::from_unit_coord(step.in_direction.0))
     }
 }
@@ -310,41 +287,39 @@ mod test {
         }
     }
 
-    #[derive(Default)]
-    struct State {
-        best_coord: Coord,
+    struct ConstrainedSearch<'a> {
+        max_depth: Depth,
+        world: &'a Grid<Cell>,
+        best_coord: Option<Coord>,
         best_score: u8,
     }
-
-    struct ConstrainedSearch(Depth);
-    impl BestSearch for ConstrainedSearch {
-        type World = Grid<Cell>;
-        type State = State;
+    impl<'a> ConstrainedSearch<'a> {
+        fn new(max_depth: Depth, world: &'a Grid<Cell>) -> Self {
+            Self {
+                max_depth,
+                world,
+                best_coord: None,
+                best_score: 0,
+            }
+        }
+    }
+    impl<'a> BestSearch for ConstrainedSearch<'a> {
         fn is_at_max_depth(&self, depth: Depth) -> bool {
-            depth >= self.0
+            depth >= self.max_depth
         }
-        fn init_state(&self, state: &mut Self::State, start: Coord) {
-            state.best_coord = start;
-            state.best_score = 0;
-        }
-        fn can_enter_updating_best(
-            &self,
-            grid: &Self::World,
-            coord: Coord,
-            state: &mut Self::State,
-        ) -> bool {
-            if let Some(&Cell::Traversable(score)) = grid.get(coord) {
-                if score > state.best_score {
-                    state.best_score = score;
-                    state.best_coord = coord;
+        fn can_enter_updating_best(&mut self, coord: Coord) -> bool {
+            if let Some(&Cell::Traversable(score)) = self.world.get(coord) {
+                if self.best_coord.is_none() || score > self.best_score {
+                    self.best_score = score;
+                    self.best_coord = Some(coord);
                 }
                 true
             } else {
                 false
             }
         }
-        fn best_coord(&self, state: &Self::State) -> Coord {
-            state.best_coord
+        fn best_coord(&self) -> Option<Coord> {
+            self.best_coord
         }
     }
 
@@ -366,12 +341,11 @@ mod test {
         let Test { grid, start } = str_slice_to_test(GRID_A);
         let mut ctx = Context::new(grid.size());
         let mut path = Path::default();
-        let mut state = State::default();
-        ctx.best_search_path(&ConstrainedSearch(100), start, &grid, &mut state, &mut path);
+        ctx.best_search_path(&mut ConstrainedSearch::new(100, &grid), start, &mut path);
         assert_eq!(path.len(), 13);
-        ctx.best_search_path(&ConstrainedSearch(10), start, &grid, &mut state, &mut path);
+        ctx.best_search_path(&mut ConstrainedSearch::new(10, &grid), start, &mut path);
         assert_eq!(path.len(), 4);
-        ctx.best_search_path(&ConstrainedSearch(3), start, &grid, &mut state, &mut path);
+        ctx.best_search_path(&mut ConstrainedSearch::new(3, &grid), start, &mut path);
         assert_eq!(path.len(), 0);
     }
 
@@ -393,12 +367,11 @@ mod test {
         let Test { grid, start } = str_slice_to_test(GRID_B);
         let mut ctx = Context::new(grid.size());
         let mut path = Path::default();
-        let mut state = State::default();
-        ctx.best_search_path(&ConstrainedSearch(100), start, &grid, &mut state, &mut path);
+        ctx.best_search_path(&mut ConstrainedSearch::new(100, &grid), start, &mut path);
         assert_eq!(path.len(), 33);
-        ctx.best_search_path(&ConstrainedSearch(30), start, &grid, &mut state, &mut path);
+        ctx.best_search_path(&mut ConstrainedSearch::new(30, &grid), start, &mut path);
         assert_eq!(path.len(), 20);
-        ctx.best_search_path(&ConstrainedSearch(3), start, &grid, &mut state, &mut path);
+        ctx.best_search_path(&mut ConstrainedSearch::new(3, &grid), start, &mut path);
         assert_eq!(path.len(), 0);
     }
 }
