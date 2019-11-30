@@ -286,6 +286,12 @@ mod test {
         }
     }
 
+    fn str_slice_to_test_start_score(str_slice: &[&str], start_score: u8) -> Test {
+        let mut test = str_slice_to_test(str_slice);
+        *test.grid.get_checked_mut(test.start) = Cell::Traversable(start_score);
+        test
+    }
+
     struct ConstrainedSearch<'a> {
         max_depth: Depth,
         world: &'a Grid<Cell>,
@@ -340,11 +346,11 @@ mod test {
         let Test { grid, start } = str_slice_to_test(GRID_A);
         let mut ctx = Context::new(grid.size());
         let mut path = Path::default();
-        ctx.best_search_path(&mut ConstrainedSearch::new(100, &grid), start, &mut path);
+        ctx.best_search_path(ConstrainedSearch::new(100, &grid), start, &mut path);
         assert_eq!(path.len(), 13);
-        ctx.best_search_path(&mut ConstrainedSearch::new(10, &grid), start, &mut path);
+        ctx.best_search_path(ConstrainedSearch::new(10, &grid), start, &mut path);
         assert_eq!(path.len(), 4);
-        ctx.best_search_path(&mut ConstrainedSearch::new(3, &grid), start, &mut path);
+        ctx.best_search_path(ConstrainedSearch::new(3, &grid), start, &mut path);
         assert_eq!(path.len(), 0);
     }
 
@@ -366,11 +372,63 @@ mod test {
         let Test { grid, start } = str_slice_to_test(GRID_B);
         let mut ctx = Context::new(grid.size());
         let mut path = Path::default();
-        ctx.best_search_path(&mut ConstrainedSearch::new(100, &grid), start, &mut path);
+        ctx.best_search_path(ConstrainedSearch::new(100, &grid), start, &mut path);
         assert_eq!(path.len(), 33);
-        ctx.best_search_path(&mut ConstrainedSearch::new(30, &grid), start, &mut path);
+        ctx.best_search_path(ConstrainedSearch::new(30, &grid), start, &mut path);
         assert_eq!(path.len(), 20);
-        ctx.best_search_path(&mut ConstrainedSearch::new(3, &grid), start, &mut path);
+        ctx.best_search_path(ConstrainedSearch::new(3, &grid), start, &mut path);
+        assert_eq!(path.len(), 0);
+    }
+
+    const GRID_C: &[&str] = &[
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        ".1........",
+        "..........",
+        ".@2.......",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_c() {
+        let Test { grid, start } = str_slice_to_test(GRID_C);
+        let mut ctx = Context::new(grid.size());
+        let mut path = Path::default();
+        ctx.best_search_path(ConstrainedSearch::new(100, &grid), start, &mut path);
+        assert_eq!(path.len(), 1);
+        ctx.best_search_path(ConstrainedSearch::new(2, &grid), start, &mut path);
+        assert_eq!(path.len(), 1);
+        ctx.best_search_path(ConstrainedSearch::new(0, &grid), start, &mut path);
+        assert_eq!(path.len(), 0);
+    }
+
+    const GRID_D: &[&str] = &[
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        ".@........",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_d() {
+        let Test { grid, start } = str_slice_to_test_start_score(GRID_D, 10);
+        let mut ctx = Context::new(grid.size());
+        let mut path = Path::default();
+        ctx.best_search_path(ConstrainedSearch::new(100, &grid), start, &mut path);
+        assert_eq!(path.len(), 0);
+        ctx.best_search_path(ConstrainedSearch::new(2, &grid), start, &mut path);
+        assert_eq!(path.len(), 0);
+        ctx.best_search_path(ConstrainedSearch::new(0, &grid), start, &mut path);
         assert_eq!(path.len(), 0);
     }
 }

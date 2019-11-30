@@ -231,46 +231,20 @@ impl Context {
         let start_cell = self.seen_set.get_checked_mut(start);
         start_cell.count = self.count;
         start_cell.in_direction = None;
-        println!("start: {:?}", start);
         if start == goal {
             return;
         }
         for &in_direction in &DIRECTIONS {
             let to_coord = start + in_direction.0;
-            if let Some(cell) = self.seen_set.get_mut(to_coord) {
-                if cell.count != self.count {
-                    cell.count = self.count;
-                    if point_to_point_search.can_enter(to_coord) {
-                        cell.in_direction = Some(in_direction);
-                    }
-                }
-            }
-            if to_coord == goal {
-                return;
-            }
             let step = Step {
                 to_coord,
                 in_direction,
             };
-            let heuristic = to_coord.manhattan_distance(goal);
-            let cost = 1;
-            let node = Node {
-                cost,
-                cost_plus_heuristic: cost + heuristic,
-                step,
-            };
-            self.priority_queue.push(node);
+            if let Some(Stop) = self.consider(point_to_point_search, step, 1, goal) {
+                return;
+            }
         }
-        while let Some(Node {
-            cost,
-            step,
-            cost_plus_heuristic,
-        }) = self.priority_queue.pop()
-        {
-            println!(
-                "expanding {:?}, c: {}, c+h: {}",
-                step.to_coord, cost, cost_plus_heuristic
-            );
+        while let Some(Node { cost, step, .. }) = self.priority_queue.pop() {
             let next_cost = cost + 1;
             if let Some(Stop) =
                 self.consider(point_to_point_search, step.forward(), next_cost, goal)
@@ -355,7 +329,7 @@ mod test {
         Test {
             grid,
             start: start.unwrap(),
-            goal: goal.unwrap(),
+            goal: goal.unwrap_or(start.unwrap()),
         }
     }
 
@@ -418,5 +392,49 @@ mod test {
         let mut path = Path::default();
         ctx.point_to_point_search_path(Search { grid: &grid }, start, goal, &mut path);
         assert_eq!(path.len(), 22);
+    }
+
+    const GRID_C: &[&str] = &[
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        ".@*.......",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_c() {
+        let Test { grid, start, goal } = str_slice_to_test(GRID_C);
+        let mut ctx = Context::new(grid.size());
+        let mut path = Path::default();
+        ctx.point_to_point_search_path(Search { grid: &grid }, start, goal, &mut path);
+        assert_eq!(path.len(), 1);
+    }
+
+    const GRID_D: &[&str] = &[
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        ".@........",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_d() {
+        let Test { grid, start, goal } = str_slice_to_test(GRID_D);
+        let mut ctx = Context::new(grid.size());
+        let mut path = Path::default();
+        ctx.point_to_point_search_path(Search { grid: &grid }, start, goal, &mut path);
+        assert_eq!(path.len(), 0);
     }
 }
