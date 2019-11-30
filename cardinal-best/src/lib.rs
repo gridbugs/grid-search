@@ -1,5 +1,7 @@
 use direction::CardinalDirection;
 use grid_2d::{Coord, Grid, Size};
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
 use std::collections::vec_deque;
 use std::collections::VecDeque;
 
@@ -53,6 +55,20 @@ pub struct Context {
     count: u64,
     seen_set: Grid<SeenCell>,
     queue: VecDeque<(Step, Depth)>,
+}
+
+#[cfg(feature = "serialize")]
+impl Serialize for Context {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.seen_set.size().serialize(s)
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl<'a> Deserialize<'a> for IndexToId {
+    fn deserialize<D: serde::Deserializer<'a>>(d: D) -> Result<Self, D::Error> {
+        Deserialize::deserialize(d).map(Self::new)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
