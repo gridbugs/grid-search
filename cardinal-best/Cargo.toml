@@ -1,5 +1,5 @@
 [package]
-name = "grid_cardinal_bfs"
+name = "grid_search_cardinal_best"
 version = "0.1.0"
 authors = ["Stephen Sherratt <stephen@sherra.tt>"]
 edition = "2018"
