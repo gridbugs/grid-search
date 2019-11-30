@@ -12,6 +12,7 @@ const DIRECTIONS: [Direction; 4] = [
     Direction(Coord::new(-1, 0)),
 ];
 
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy)]
 struct Direction(Coord);
 
@@ -20,6 +21,7 @@ struct SeenCell {
     in_direction: Option<Direction>,
 }
 
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 struct Step {
     to_coord: Coord,
     in_direction: Direction,
@@ -91,6 +93,7 @@ impl<'a> Iterator for PathIter<'a> {
     }
 }
 
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Default)]
 pub struct Path {
     steps: VecDeque<Step>,
