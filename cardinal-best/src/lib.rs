@@ -1,61 +1,19 @@
+use coord_2d::{Coord, Size};
 use direction::CardinalDirection;
-use grid_2d::{Coord, Grid, Size};
+pub use grid_search_cardinal_common::path::Path;
+use grid_search_cardinal_common::{
+    seen_set::{SeenSet, Visit},
+    step::Step,
+    unit_coord::UNIT_COORDS,
+};
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
-use std::collections::{vec_deque, VecDeque};
-
-const DIRECTIONS: [Direction; 4] = [
-    Direction(Coord::new(0, 1)),
-    Direction(Coord::new(1, 0)),
-    Direction(Coord::new(0, -1)),
-    Direction(Coord::new(-1, 0)),
-];
-
-#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
-#[derive(Clone, Copy, Debug)]
-struct Direction(Coord);
-
-struct SeenCell {
-    count: u64,
-    in_direction: Option<Direction>,
-}
-
-#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
-#[derive(Clone, Debug)]
-struct Step {
-    to_coord: Coord,
-    in_direction: Direction,
-}
-
-impl Step {
-    fn forward(&self) -> Self {
-        let in_direction = self.in_direction;
-        Self {
-            to_coord: self.to_coord + in_direction.0,
-            in_direction,
-        }
-    }
-    fn left(&self) -> Self {
-        let in_direction = Direction(self.in_direction.0.left90());
-        Self {
-            to_coord: self.to_coord + in_direction.0,
-            in_direction,
-        }
-    }
-    fn right(&self) -> Self {
-        let in_direction = Direction(self.in_direction.0.right90());
-        Self {
-            to_coord: self.to_coord + in_direction.0,
-            in_direction,
-        }
-    }
-}
+use std::collections::VecDeque;
 
 pub type Depth = u64;
 
 pub struct Context {
-    count: u64,
-    seen_set: Grid<SeenCell>,
+    seen_set: SeenSet,
     queue: VecDeque<(Step, Depth)>,
 }
 
@@ -73,43 +31,6 @@ impl<'a> Deserialize<'a> for Context {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PathNode {
-    pub to_coord: Coord,
-    pub in_direction: CardinalDirection,
-}
-
-pub struct PathIter<'a> {
-    iter: vec_deque::Iter<'a, Step>,
-}
-
-impl<'a> Iterator for PathIter<'a> {
-    type Item = PathNode;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|step| PathNode {
-            to_coord: step.to_coord,
-            in_direction: CardinalDirection::from_unit_coord(step.in_direction.0),
-        })
-    }
-}
-
-#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
-#[derive(Default, Clone, Debug)]
-pub struct Path {
-    steps: VecDeque<Step>,
-}
-
-impl Path {
-    pub fn iter(&self) -> PathIter {
-        PathIter {
-            iter: self.steps.iter(),
-        }
-    }
-    pub fn len(&self) -> usize {
-        self.steps.len()
-    }
-}
-
 pub trait BestSearch {
     fn is_at_max_depth(&self, depth: Depth) -> bool;
     fn can_enter_updating_best(&mut self, coord: Coord) -> bool;
@@ -119,103 +40,45 @@ pub trait BestSearch {
 impl Context {
     pub fn new(size: Size) -> Self {
         Self {
-            count: 1,
-            seen_set: Grid::new_fn(size, |_| SeenCell {
-                count: 0,
-                in_direction: None,
-            }),
+            seen_set: SeenSet::new(size),
             queue: VecDeque::new(),
         }
     }
 
-    fn build_path_to(&self, end: Coord, path: &mut Path) {
-        let mut cell = self.seen_set.get(end).expect("path end out of bounds");
-        debug_assert_eq!(
-            cell.count, self.count,
-            "path end not visited in latest search"
-        );
-        let mut coord = end;
-        path.steps.clear();
-        while let Some(in_direction) = cell.in_direction {
-            let step = Step {
-                to_coord: coord,
-                in_direction,
-            };
-            path.steps.push_back(step);
-            coord = coord - in_direction.0;
-            cell = self.seen_set.get_checked(coord);
-            debug_assert_eq!(
-                cell.count, self.count,
-                "path includes cell not visited in latest search"
-            );
-        }
-    }
-
-    fn first_step_towards(&self, end: Coord) -> Option<Step> {
-        let mut cell = self.seen_set.get(end).expect("path end out of bounds");
-        debug_assert_eq!(
-            cell.count, self.count,
-            "path end not visited in latest search"
-        );
-        let mut coord = end;
-        let mut ret = None;
-        while let Some(in_direction) = cell.in_direction {
-            let step = Step {
-                to_coord: coord,
-                in_direction,
-            };
-            coord = coord - in_direction.0;
-            cell = self.seen_set.get_checked(coord);
-            debug_assert_eq!(
-                cell.count, self.count,
-                "path includes cell not visited in latest search"
-            );
-            ret = Some(step);
-        }
-        ret
-    }
-
-    fn consider_best<B: BestSearch>(&mut self, best_search: &mut B, step: Step, depth: Depth) {
-        if let Some(seen_cell) = self.seen_set.get_mut(step.to_coord) {
-            if seen_cell.count != self.count {
-                seen_cell.count = self.count;
-                if best_search.can_enter_updating_best(step.to_coord) {
-                    seen_cell.in_direction = Some(step.in_direction);
-                    if !best_search.is_at_max_depth(depth) {
-                        self.queue.push_back((step, depth));
-                    }
+    fn consider<B: BestSearch>(&mut self, best_search: &mut B, step: Step, depth: Depth) {
+        if let Some(Visit) = self.seen_set.try_visit(step.clone()) {
+            if best_search.can_enter_updating_best(step.to_coord) {
+                if !best_search.is_at_max_depth(depth) {
+                    self.queue.push_back((step, depth));
                 }
             }
         }
     }
 
     fn best_search_core<B: BestSearch>(&mut self, best_search: &mut B, start: Coord) {
-        self.count += 1;
+        self.seen_set.init(start);
         self.queue.clear();
-        let start_cell = self.seen_set.get_checked_mut(start);
-        start_cell.count = self.count;
-        start_cell.in_direction = None;
         if !best_search.can_enter_updating_best(start) {
             return;
         }
         if best_search.is_at_max_depth(0) {
             return;
         }
-        for &in_direction in &DIRECTIONS {
+        for &in_direction in &UNIT_COORDS {
             let step = Step {
-                to_coord: start + in_direction.0,
+                to_coord: start + in_direction.coord(),
                 in_direction,
             };
-            self.consider_best(best_search, step, 1);
+            self.consider(best_search, step, 1);
         }
         if best_search.is_at_max_depth(1) {
             return;
         }
         while let Some((step, depth)) = self.queue.pop_front() {
             let next_depth = depth + 1;
-            self.consider_best(best_search, step.forward(), next_depth);
-            self.consider_best(best_search, step.left(), next_depth);
-            self.consider_best(best_search, step.right(), next_depth);
+            self.consider(best_search, step.forward(), next_depth);
+            self.consider(best_search, step.left(), next_depth);
+            self.consider(best_search, step.right(), next_depth);
         }
     }
 
@@ -227,7 +90,7 @@ impl Context {
     ) {
         self.best_search_core(&mut best_search, start);
         let end = best_search.best_coord().unwrap_or(start);
-        self.build_path_to(end, path);
+        self.seen_set.build_path_to(end, path);
     }
 
     pub fn best_search_first<B: BestSearch>(
@@ -237,14 +100,14 @@ impl Context {
     ) -> Option<CardinalDirection> {
         self.best_search_core(&mut best_search, start);
         let end = best_search.best_coord().unwrap_or(start);
-        self.first_step_towards(end)
-            .map(|step| CardinalDirection::from_unit_coord(step.in_direction.0))
+        self.seen_set.first_direction_towards(end)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use grid_2d::Grid;
 
     #[derive(Clone)]
     enum Cell {

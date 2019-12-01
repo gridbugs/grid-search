@@ -3,4 +3,5 @@
 members = [
     "cardinal-best",
     "cardinal-point-to-point",
+    "cardinal-common",
 ]

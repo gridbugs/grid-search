@@ -1,47 +1,15 @@
+use coord_2d::{Coord, Size};
 use direction::CardinalDirection;
-use grid_2d::{Coord, Grid, Size};
+pub use grid_search_cardinal_common::path::Path;
+use grid_search_cardinal_common::{
+    seen_set::{SeenSet, Visit},
+    step::Step,
+    unit_coord::UNIT_COORDS,
+};
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::{vec_deque, BinaryHeap, VecDeque};
-
-const DIRECTIONS: [Direction; 4] = [
-    Direction(Coord::new(0, 1)),
-    Direction(Coord::new(1, 0)),
-    Direction(Coord::new(0, -1)),
-    Direction(Coord::new(-1, 0)),
-];
-
-#[derive(Clone, Copy, Debug)]
-struct Direction(Coord);
-
-#[derive(Clone, Debug)]
-struct Step {
-    to_coord: Coord,
-    in_direction: Direction,
-}
-
-impl Step {
-    fn forward(&self) -> Self {
-        let in_direction = self.in_direction;
-        Self {
-            to_coord: self.to_coord + in_direction.0,
-            in_direction,
-        }
-    }
-    fn left(&self) -> Self {
-        let in_direction = Direction(self.in_direction.0.left90());
-        Self {
-            to_coord: self.to_coord + in_direction.0,
-            in_direction,
-        }
-    }
-    fn right(&self) -> Self {
-        let in_direction = Direction(self.in_direction.0.right90());
-        Self {
-            to_coord: self.to_coord + in_direction.0,
-            in_direction,
-        }
-    }
-}
+use std::collections::BinaryHeap;
 
 #[derive(Debug)]
 struct Node {
@@ -79,117 +47,37 @@ impl Ord for Node {
     }
 }
 
-struct SeenCell {
-    count: u64,
-    in_direction: Option<Direction>,
-}
-
 pub trait PointToPointSearch {
     fn can_enter(&self, coord: Coord) -> bool;
 }
 
 struct Stop;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PathNode {
-    pub to_coord: Coord,
-    pub in_direction: CardinalDirection,
-}
-
-pub struct PathIter<'a> {
-    iter: vec_deque::Iter<'a, Step>,
-}
-
-impl<'a> Iterator for PathIter<'a> {
-    type Item = PathNode;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|step| PathNode {
-            to_coord: step.to_coord,
-            in_direction: CardinalDirection::from_unit_coord(step.in_direction.0),
-        })
-    }
-}
-
-#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
-#[derive(Default, Clone, Debug)]
-pub struct Path {
-    steps: VecDeque<Step>,
-}
-
-impl Path {
-    pub fn iter(&self) -> PathIter {
-        PathIter {
-            iter: self.steps.iter(),
-        }
-    }
-    pub fn len(&self) -> usize {
-        self.steps.len()
-    }
-}
-
 pub struct Context {
-    count: u64,
-    seen_set: Grid<SeenCell>,
+    seen_set: SeenSet,
     priority_queue: BinaryHeap<Node>,
+}
+
+#[cfg(feature = "serialize")]
+impl Serialize for Context {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.seen_set.size().serialize(s)
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl<'a> Deserialize<'a> for Context {
+    fn deserialize<D: serde::Deserializer<'a>>(d: D) -> Result<Self, D::Error> {
+        Deserialize::deserialize(d).map(Self::new)
+    }
 }
 
 impl Context {
     pub fn new(size: Size) -> Self {
         Self {
-            count: 1,
-            seen_set: Grid::new_fn(size, |_| SeenCell {
-                count: 0,
-                in_direction: None,
-            }),
+            seen_set: SeenSet::new(size),
             priority_queue: BinaryHeap::new(),
         }
-    }
-
-    fn build_path_to(&self, end: Coord, path: &mut Path) {
-        let mut cell = self.seen_set.get(end).expect("path end out of bounds");
-        debug_assert_eq!(
-            cell.count, self.count,
-            "path end not visited in latest search"
-        );
-        let mut coord = end;
-        path.steps.clear();
-        while let Some(in_direction) = cell.in_direction {
-            let step = Step {
-                to_coord: coord,
-                in_direction,
-            };
-            path.steps.push_back(step);
-            coord = coord - in_direction.0;
-            cell = self.seen_set.get_checked(coord);
-            debug_assert_eq!(
-                cell.count, self.count,
-                "path includes cell not visited in latest search"
-            );
-        }
-    }
-
-    fn first_step_towards(&self, end: Coord) -> Option<Step> {
-        let mut cell = self.seen_set.get(end).expect("path end out of bounds");
-        debug_assert_eq!(
-            cell.count, self.count,
-            "path end not visited in latest search"
-        );
-        let mut coord = end;
-        let mut ret = None;
-        while let Some(in_direction) = cell.in_direction {
-            let step = Step {
-                to_coord: coord,
-                in_direction,
-            };
-            coord = coord - in_direction.0;
-            cell = self.seen_set.get_checked(coord);
-            debug_assert_eq!(
-                cell.count, self.count,
-                "path includes cell not visited in latest search"
-            );
-            ret = Some(step);
-        }
-        ret
     }
 
     fn consider<P: PointToPointSearch>(
@@ -199,22 +87,18 @@ impl Context {
         cost: u32,
         goal: Coord,
     ) -> Option<Stop> {
-        if let Some(cell) = self.seen_set.get_mut(step.to_coord) {
-            if cell.count != self.count {
-                cell.count = self.count;
-                if point_to_point_search.can_enter(step.to_coord) {
-                    cell.in_direction = Some(step.in_direction);
-                    if step.to_coord == goal {
-                        return Some(Stop);
-                    }
-                    let heuristic = step.to_coord.manhattan_distance(goal);
-                    let node = Node {
-                        cost,
-                        cost_plus_heuristic: cost + heuristic,
-                        step,
-                    };
-                    self.priority_queue.push(node);
+        if let Some(Visit) = self.seen_set.try_visit(step.clone()) {
+            if point_to_point_search.can_enter(step.to_coord) {
+                if step.to_coord == goal {
+                    return Some(Stop);
                 }
+                let heuristic = step.to_coord.manhattan_distance(goal);
+                let node = Node {
+                    cost,
+                    cost_plus_heuristic: cost + heuristic,
+                    step,
+                };
+                self.priority_queue.push(node);
             }
         }
         None
@@ -226,16 +110,13 @@ impl Context {
         start: Coord,
         goal: Coord,
     ) {
-        self.count += 1;
+        self.seen_set.init(start);
         self.priority_queue.clear();
-        let start_cell = self.seen_set.get_checked_mut(start);
-        start_cell.count = self.count;
-        start_cell.in_direction = None;
         if start == goal {
             return;
         }
-        for &in_direction in &DIRECTIONS {
-            let to_coord = start + in_direction.0;
+        for &in_direction in &UNIT_COORDS {
+            let to_coord = start + in_direction.coord();
             let step = Step {
                 to_coord,
                 in_direction,
@@ -269,7 +150,7 @@ impl Context {
         path: &mut Path,
     ) {
         self.point_to_point_search_core(&point_to_point_search, start, goal);
-        self.build_path_to(goal, path);
+        self.seen_set.build_path_to(goal, path);
     }
 
     pub fn point_to_point_search_first<P: PointToPointSearch>(
@@ -279,14 +160,14 @@ impl Context {
         goal: Coord,
     ) -> Option<CardinalDirection> {
         self.point_to_point_search_core(&point_to_point_search, start, goal);
-        self.first_step_towards(goal)
-            .map(|step| CardinalDirection::from_unit_coord(step.in_direction.0))
+        self.seen_set.first_direction_towards(goal)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use grid_2d::Grid;
 
     #[derive(Clone)]
     enum Cell {
