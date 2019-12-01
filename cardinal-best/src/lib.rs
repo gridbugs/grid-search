@@ -82,22 +82,13 @@ impl Context {
         }
     }
 
-    pub fn best_search_path<B: BestSearch>(
-        &mut self,
-        mut best_search: B,
-        start: Coord,
-        path: &mut Path,
-    ) {
+    pub fn best_search_path<B: BestSearch>(&mut self, mut best_search: B, start: Coord, path: &mut Path) {
         self.best_search_core(&mut best_search, start);
         let end = best_search.best_coord().unwrap_or(start);
         self.seen_set.build_path_to(end, path);
     }
 
-    pub fn best_search_first<B: BestSearch>(
-        &mut self,
-        mut best_search: B,
-        start: Coord,
-    ) -> Option<CardinalDirection> {
+    pub fn best_search_first<B: BestSearch>(&mut self, mut best_search: B, start: Coord) -> Option<CardinalDirection> {
         self.best_search_core(&mut best_search, start);
         let end = best_search.best_coord().unwrap_or(start);
         self.seen_set.first_direction_towards(end)

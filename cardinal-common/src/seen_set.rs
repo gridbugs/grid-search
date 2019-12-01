@@ -33,10 +33,7 @@ impl SeenSet {
 
     pub fn build_path_to(&self, end: Coord, path: &mut Path) {
         let mut cell = self.grid.get(end).expect("path end out of bounds");
-        debug_assert_eq!(
-            cell.count, self.count,
-            "path end not visited in latest search"
-        );
+        debug_assert_eq!(cell.count, self.count, "path end not visited in latest search");
         let mut coord = end;
         path.clear();
         while let Some(in_direction) = cell.in_direction {
@@ -56,10 +53,7 @@ impl SeenSet {
 
     pub fn first_direction_towards(&self, end: Coord) -> Option<CardinalDirection> {
         let mut cell = self.grid.get(end).expect("path end out of bounds");
-        debug_assert_eq!(
-            cell.count, self.count,
-            "path end not visited in latest search"
-        );
+        debug_assert_eq!(cell.count, self.count, "path end not visited in latest search");
         let mut coord = end;
         let mut ret = None;
         while let Some(in_direction) = cell.in_direction {

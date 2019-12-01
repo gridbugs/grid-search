@@ -26,10 +26,7 @@ impl PartialEq for Node {
 
 impl PartialOrd for Node {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match other
-            .cost_plus_heuristic
-            .partial_cmp(&self.cost_plus_heuristic)
-        {
+        match other.cost_plus_heuristic.partial_cmp(&self.cost_plus_heuristic) {
             Some(Ordering::Equal) => self.cost.partial_cmp(&other.cost),
             other => other,
         }
@@ -117,26 +114,20 @@ impl Context {
         }
         for &in_direction in &UNIT_COORDS {
             let to_coord = start + in_direction.coord();
-            let step = Step {
-                to_coord,
-                in_direction,
-            };
+            let step = Step { to_coord, in_direction };
             if let Some(Stop) = self.consider(point_to_point_search, step, 1, goal) {
                 return;
             }
         }
         while let Some(Node { cost, step, .. }) = self.priority_queue.pop() {
             let next_cost = cost + 1;
-            if let Some(Stop) =
-                self.consider(point_to_point_search, step.forward(), next_cost, goal)
-            {
+            if let Some(Stop) = self.consider(point_to_point_search, step.forward(), next_cost, goal) {
                 return;
             }
             if let Some(Stop) = self.consider(point_to_point_search, step.left(), next_cost, goal) {
                 return;
             }
-            if let Some(Stop) = self.consider(point_to_point_search, step.right(), next_cost, goal)
-            {
+            if let Some(Stop) = self.consider(point_to_point_search, step.right(), next_cost, goal) {
                 return;
             }
         }

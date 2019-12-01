@@ -23,6 +23,7 @@ impl<'a> Iterator for PathIter<'a> {
     }
 }
 
+#[derive(Default)]
 pub struct Path {
     steps: VecDeque<Step>,
 }
