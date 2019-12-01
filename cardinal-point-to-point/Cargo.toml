@@ -15,3 +15,8 @@ serde = { version = "1.0", features = ["serde_derive"], optional = true }
 
 [dev-dependencies]
 grid_2d = "0.14"
+criterion = "0.3"
+
+[[bench]]
+name = "bench"
+harness = false
