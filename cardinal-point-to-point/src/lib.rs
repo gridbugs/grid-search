@@ -2,9 +2,9 @@ use coord_2d::{Coord, Size};
 use direction::CardinalDirection;
 pub use grid_search_cardinal_common::path::Path;
 use grid_search_cardinal_common::{
+    coord::{CardinalCoord, UNIT_COORDS},
     seen_set::{SeenSet, Visit},
-    step::Step,
-    unit_coord::UNIT_COORDS,
+    step::{Jump, Step},
 };
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
@@ -48,7 +48,24 @@ pub trait PointToPointSearch {
     fn can_enter(&self, coord: Coord) -> bool;
 }
 
-struct Stop;
+trait Profiler {
+    fn expand(&mut self);
+}
+
+impl Profiler for () {
+    fn expand(&mut self) {}
+}
+
+#[derive(Default, Debug)]
+pub struct Profile {
+    expand: u64,
+}
+
+impl Profiler for Profile {
+    fn expand(&mut self) {
+        self.expand += 1;
+    }
+}
 
 pub struct Context {
     seen_set: SeenSet,
@@ -69,6 +86,58 @@ impl<'a> Deserialize<'a> for Context {
     }
 }
 
+pub mod expand {
+    use super::private_expand::PrivateExpand;
+    pub trait Expand: PrivateExpand {}
+
+    pub struct JumpPoint;
+    pub struct Sequential;
+
+    impl Expand for JumpPoint {}
+    impl Expand for Sequential {}
+}
+
+mod private_expand {
+    use super::{expand, Context, Coord, PointToPointSearch, Step};
+    pub struct Stop;
+    pub trait PrivateExpand {
+        fn expand<P: PointToPointSearch>(
+            context: &mut Context,
+            point_to_point_search: &P,
+            step: Step,
+            cost: u32,
+            goal: Coord,
+        ) -> Option<Stop>;
+    }
+
+    impl PrivateExpand for expand::JumpPoint {
+        fn expand<P: PointToPointSearch>(
+            context: &mut Context,
+            point_to_point_search: &P,
+            step: Step,
+            cost: u32,
+            goal: Coord,
+        ) -> Option<Stop> {
+            context.consider_jps(point_to_point_search, step, cost, goal)
+        }
+    }
+
+    impl PrivateExpand for expand::Sequential {
+        fn expand<P: PointToPointSearch>(
+            context: &mut Context,
+            point_to_point_search: &P,
+            step: Step,
+            cost: u32,
+            goal: Coord,
+        ) -> Option<Stop> {
+            context.consider(point_to_point_search, step, cost, goal)
+        }
+    }
+}
+
+use expand::Expand;
+use private_expand::Stop;
+
 impl Context {
     pub fn new(size: Size) -> Self {
         Self {
@@ -84,12 +153,13 @@ impl Context {
         cost: u32,
         goal: Coord,
     ) -> Option<Stop> {
-        if let Some(Visit) = self.seen_set.try_visit(step.clone()) {
+        if let Some(Visit) = self.seen_set.try_visit_step(step) {
             if point_to_point_search.can_enter(step.to_coord) {
                 if step.to_coord == goal {
                     return Some(Stop);
                 }
                 let heuristic = step.to_coord.manhattan_distance(goal);
+                let cost = cost + 1;
                 let node = Node {
                     cost,
                     cost_plus_heuristic: cost + heuristic,
@@ -101,11 +171,12 @@ impl Context {
         None
     }
 
-    fn point_to_point_search_core<P: PointToPointSearch>(
+    fn point_to_point_search_core_general<S: PointToPointSearch, E: Expand, P: Profiler>(
         &mut self,
-        point_to_point_search: &P,
+        point_to_point_search: &S,
         start: Coord,
         goal: Coord,
+        profiler: &mut P,
     ) {
         self.seen_set.init(start);
         self.priority_queue.clear();
@@ -113,13 +184,47 @@ impl Context {
             return;
         }
         for &in_direction in &UNIT_COORDS {
-            let to_coord = start + in_direction.coord();
+            let to_coord = start + in_direction.to_coord();
+            let step = Step { to_coord, in_direction };
+            if let Some(Stop) = E::expand(self, point_to_point_search, step, 1, goal) {
+                return;
+            }
+        }
+        while let Some(Node { cost, step, .. }) = self.priority_queue.pop() {
+            profiler.expand();
+            if let Some(Stop) = E::expand(self, point_to_point_search, step.forward(), cost, goal) {
+                return;
+            }
+            if let Some(Stop) = E::expand(self, point_to_point_search, step.left(), cost, goal) {
+                return;
+            }
+            if let Some(Stop) = E::expand(self, point_to_point_search, step.right(), cost, goal) {
+                return;
+            }
+        }
+    }
+
+    fn point_to_point_search_core<S: PointToPointSearch, P: Profiler>(
+        &mut self,
+        point_to_point_search: &S,
+        start: Coord,
+        goal: Coord,
+        profiler: &mut P,
+    ) {
+        self.seen_set.init(start);
+        self.priority_queue.clear();
+        if start == goal {
+            return;
+        }
+        for &in_direction in &UNIT_COORDS {
+            let to_coord = start + in_direction.to_coord();
             let step = Step { to_coord, in_direction };
             if let Some(Stop) = self.consider(point_to_point_search, step, 1, goal) {
                 return;
             }
         }
         while let Some(Node { cost, step, .. }) = self.priority_queue.pop() {
+            profiler.expand();
             let next_cost = cost + 1;
             if let Some(Stop) = self.consider(point_to_point_search, step.forward(), next_cost, goal) {
                 return;
@@ -140,7 +245,7 @@ impl Context {
         goal: Coord,
         path: &mut Path,
     ) {
-        self.point_to_point_search_core(&point_to_point_search, start, goal);
+        self.point_to_point_search_core(&point_to_point_search, start, goal, &mut ());
         self.seen_set.build_path_to(goal, path);
     }
 
@@ -150,8 +255,150 @@ impl Context {
         start: Coord,
         goal: Coord,
     ) -> Option<CardinalDirection> {
-        self.point_to_point_search_core(&point_to_point_search, start, goal);
+        self.point_to_point_search_core(&point_to_point_search, start, goal, &mut ());
         self.seen_set.first_direction_towards(goal)
+    }
+
+    pub fn point_to_point_search_profile<P: PointToPointSearch>(
+        &mut self,
+        point_to_point_search: P,
+        start: Coord,
+        goal: Coord,
+    ) -> Profile {
+        let mut profile = Profile::default();
+        self.point_to_point_search_core(&point_to_point_search, start, goal, &mut profile);
+        profile
+    }
+
+    fn consider_jps<P: PointToPointSearch>(
+        &mut self,
+        point_to_point_search: &P,
+        step: Step,
+        cost: u32,
+        goal: Coord,
+    ) -> Option<Stop> {
+        match jump(point_to_point_search, step, cost, goal) {
+            JumpResult::DeadEnd => None,
+            JumpResult::AtGoal(in_direction) => {
+                let jump = Jump {
+                    in_direction,
+                    to_coord: goal,
+                };
+                self.seen_set.try_visit_jump(jump);
+                Some(Stop)
+            }
+            JumpResult::ForcedNeighbour { jump, cost } => {
+                if let Some(Visit) = self.seen_set.try_visit_jump(jump) {
+                    let heuristic = step.to_coord.manhattan_distance(goal);
+                    let node = Node {
+                        cost,
+                        cost_plus_heuristic: cost + heuristic,
+                        step: jump.last_step(),
+                    };
+                    self.priority_queue.push(node);
+                }
+                None
+            }
+        }
+    }
+
+    fn point_to_point_search_jps_core<S: PointToPointSearch, P: Profiler>(
+        &mut self,
+        point_to_point_search: &S,
+        start: Coord,
+        goal: Coord,
+        profiler: &mut P,
+    ) {
+        self.seen_set.init(start);
+        self.priority_queue.clear();
+        if start == goal {
+            return;
+        }
+        for &in_direction in &UNIT_COORDS {
+            let to_coord = start + in_direction.to_coord();
+            let step = Step { to_coord, in_direction };
+            profiler.expand();
+            if let Some(Stop) = self.consider_jps(point_to_point_search, step, 1, goal) {
+                return;
+            }
+        }
+        while let Some(Node { cost, step, .. }) = self.priority_queue.pop() {
+            profiler.expand();
+            if let Some(Stop) = self.consider_jps(point_to_point_search, step.forward(), cost, goal) {
+                return;
+            }
+            if let Some(Stop) = self.consider_jps(point_to_point_search, step.left(), cost, goal) {
+                return;
+            }
+            if let Some(Stop) = self.consider_jps(point_to_point_search, step.right(), cost, goal) {
+                return;
+            }
+        }
+    }
+
+    pub fn point_to_point_search_jps_path<P: PointToPointSearch>(
+        &mut self,
+        point_to_point_search: P,
+        start: Coord,
+        goal: Coord,
+        path: &mut Path,
+    ) {
+        self.point_to_point_search_jps_core(&point_to_point_search, start, goal, &mut ());
+        self.seen_set.build_path_to(goal, path);
+    }
+}
+
+fn has_forced_neighbour<P: PointToPointSearch>(point_to_point_search: &P, step: Step) -> bool {
+    (!point_to_point_search.can_enter(step.to_coord + step.in_direction.left135())
+        && point_to_point_search.can_enter(step.to_coord + step.in_direction.left90().to_coord()))
+        || (!point_to_point_search.can_enter(step.to_coord + step.in_direction.right135())
+            && point_to_point_search.can_enter(step.to_coord + step.in_direction.right90().to_coord()))
+}
+
+enum JumpResult {
+    AtGoal(CardinalCoord),
+    ForcedNeighbour { cost: u32, jump: Jump },
+    DeadEnd,
+}
+
+fn side_jump<P: PointToPointSearch>(point_to_point_search: &P, mut step: Step, goal: Coord) -> bool {
+    loop {
+        if step.to_coord == goal {
+            return true;
+        }
+        if !point_to_point_search.can_enter(step.to_coord) {
+            return false;
+        }
+        if has_forced_neighbour(point_to_point_search, step) {
+            return true;
+        }
+        step = step.forward();
+    }
+}
+
+fn jump<P: PointToPointSearch>(point_to_point_search: &P, mut step: Step, cost: u32, goal: Coord) -> JumpResult {
+    let mut cost_delta = 1;
+    loop {
+        if step.to_coord == goal {
+            return JumpResult::AtGoal(step.in_direction.scale(cost_delta));
+        }
+        if !point_to_point_search.can_enter(step.to_coord) {
+            return JumpResult::DeadEnd;
+        }
+        if has_forced_neighbour(point_to_point_search, step) {
+            return JumpResult::ForcedNeighbour {
+                jump: step.scale_back(cost_delta),
+                cost: cost + cost_delta,
+            };
+        }
+        if side_jump(point_to_point_search, step.left(), goal) || side_jump(point_to_point_search, step.right(), goal) {
+            return JumpResult::ForcedNeighbour {
+                jump: step.scale_back(cost_delta),
+                cost: cost + cost_delta,
+            };
+        }
+        step = step.forward();
+        cost_delta += 1;
     }
 }
 
@@ -236,6 +483,13 @@ mod test {
     ];
 
     #[test]
+    fn grid_jps() {
+        let Test { grid, start, goal } = str_slice_to_test(GRID_A);
+        let mut ctx = Context::new(grid.size());
+        ctx.point_to_point_search_jps_core(&mut Search { grid: &grid }, start, goal, &mut ());
+    }
+
+    #[test]
     fn grid_a() {
         let Test { grid, start, goal } = str_slice_to_test(GRID_A);
         let mut ctx = Context::new(grid.size());
@@ -262,7 +516,7 @@ mod test {
         let Test { grid, start, goal } = str_slice_to_test(GRID_B);
         let mut ctx = Context::new(grid.size());
         let mut path = Path::default();
-        ctx.point_to_point_search_path(Search { grid: &grid }, start, goal, &mut path);
+        ctx.point_to_point_search_jps_path(Search { grid: &grid }, start, goal, &mut path);
         assert_eq!(path.len(), 22);
     }
 

@@ -2,9 +2,9 @@ use coord_2d::{Coord, Size};
 use direction::CardinalDirection;
 pub use grid_search_cardinal_common::path::Path;
 use grid_search_cardinal_common::{
+    coord::UNIT_COORDS,
     seen_set::{SeenSet, Visit},
     step::Step,
-    unit_coord::UNIT_COORDS,
 };
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
@@ -46,7 +46,7 @@ impl Context {
     }
 
     fn consider<B: BestSearch>(&mut self, best_search: &mut B, step: Step, depth: Depth) {
-        if let Some(Visit) = self.seen_set.try_visit(step.clone()) {
+        if let Some(Visit) = self.seen_set.try_visit_step(step) {
             if best_search.can_enter_updating_best(step.to_coord) {
                 if !best_search.is_at_max_depth(depth) {
                     self.queue.push_back((step, depth));
@@ -66,7 +66,7 @@ impl Context {
         }
         for &in_direction in &UNIT_COORDS {
             let step = Step {
-                to_coord: start + in_direction.coord(),
+                to_coord: start + in_direction.to_coord(),
                 in_direction,
             };
             self.consider(best_search, step, 1);

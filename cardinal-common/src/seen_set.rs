@@ -1,12 +1,12 @@
+use crate::coord::CardinalCoord;
 use crate::path::Path;
-use crate::step::Step;
-use crate::unit_coord::UnitCoord;
+use crate::step::{Jump, Step};
 use direction::CardinalDirection;
 use grid_2d::{Coord, Grid, Size};
 
 struct SeenCell {
     count: u64,
-    in_direction: Option<UnitCoord>,
+    in_direction: Option<CardinalCoord>,
 }
 
 pub struct SeenSet {
@@ -37,12 +37,17 @@ impl SeenSet {
         let mut coord = end;
         path.clear();
         while let Some(in_direction) = cell.in_direction {
-            let step = Step {
+            println!("building path to_coord {:?} in_direction {:?}", coord, in_direction);
+            let mut step = Step {
                 to_coord: coord,
-                in_direction,
+                in_direction: in_direction.to_unit_coord(),
             };
-            path.prepend(step);
-            coord = coord - in_direction.coord();
+            for _ in 0..in_direction.magnitude() {
+                path.prepend(step);
+                step.to_coord -= step.in_direction.to_coord();
+            }
+            coord = step.to_coord;
+            println!("next coord {:?}, in_direction: {:?}", coord, in_direction);
             cell = self.grid.get_checked(coord);
             debug_assert_eq!(
                 cell.count, self.count,
@@ -57,19 +62,15 @@ impl SeenSet {
         let mut coord = end;
         let mut ret = None;
         while let Some(in_direction) = cell.in_direction {
-            let step = Step {
-                to_coord: coord,
-                in_direction,
-            };
-            coord = coord - in_direction.coord();
+            coord = coord - in_direction.to_coord();
             cell = self.grid.get_checked(coord);
             debug_assert_eq!(
                 cell.count, self.count,
                 "path includes cell not visited in latest search"
             );
-            ret = Some(step);
+            ret = Some(in_direction);
         }
-        ret.map(|step| step.in_direction.to_cardinal_direction())
+        ret.map(|in_direction| in_direction.to_cardinal_direction())
     }
 
     pub fn init(&mut self, start: Coord) {
@@ -79,14 +80,24 @@ impl SeenSet {
         cell.in_direction = None;
     }
 
-    pub fn try_visit(&mut self, step: Step) -> Option<Visit> {
-        if let Some(cell) = self.grid.get_mut(step.to_coord) {
+    fn try_visit(&mut self, to_coord: Coord, in_direction: CardinalCoord) -> Option<Visit> {
+        println!("trying visit {:?} {:?}", to_coord, in_direction);
+        if let Some(cell) = self.grid.get_mut(to_coord) {
             if cell.count != self.count {
+                println!("visited {:?} {:?}", to_coord, in_direction);
                 cell.count = self.count;
-                cell.in_direction = Some(step.in_direction);
+                cell.in_direction = Some(in_direction);
                 return Some(Visit);
             }
         }
         None
+    }
+
+    pub fn try_visit_step(&mut self, step: Step) -> Option<Visit> {
+        self.try_visit(step.to_coord, step.in_direction.to_cardinal_coord())
+    }
+
+    pub fn try_visit_jump(&mut self, jump: Jump) -> Option<Visit> {
+        self.try_visit(jump.to_coord, jump.in_direction)
     }
 }
