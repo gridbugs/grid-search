@@ -2,7 +2,7 @@ use coord_2d::{Coord, Size};
 use direction::CardinalDirection;
 pub use grid_search_cardinal_common::path::Path;
 use grid_search_cardinal_common::{
-    coord::{CardinalCoord, UNIT_COORDS},
+    coord::UNIT_COORDS,
     seen_set::{SeenSet, Visit},
     step::{Jump, Step},
 };
@@ -107,6 +107,13 @@ mod private_expand {
     use super::{expand, Context, Coord, PointToPointSearch, Step};
     pub struct Stop;
     pub trait PrivateExpand {
+        fn consider<P: PointToPointSearch>(
+            context: &mut Context,
+            point_to_point_search: &P,
+            step: Step,
+            cost: u32,
+            goal: Coord,
+        ) -> Option<Stop>;
         fn expand<P: PointToPointSearch>(
             context: &mut Context,
             point_to_point_search: &P,
@@ -117,7 +124,7 @@ mod private_expand {
     }
 
     impl PrivateExpand for expand::JumpPoint {
-        fn expand<P: PointToPointSearch>(
+        fn consider<P: PointToPointSearch>(
             context: &mut Context,
             point_to_point_search: &P,
             step: Step,
@@ -126,9 +133,7 @@ mod private_expand {
         ) -> Option<Stop> {
             context.consider_jps(point_to_point_search, step, cost, goal)
         }
-    }
 
-    impl PrivateExpand for expand::Sequential {
         fn expand<P: PointToPointSearch>(
             context: &mut Context,
             point_to_point_search: &P,
@@ -136,7 +141,51 @@ mod private_expand {
             cost: u32,
             goal: Coord,
         ) -> Option<Stop> {
+            if let Some(Stop) = Self::consider(context, point_to_point_search, step.forward(), cost, goal) {
+                return Some(Stop);
+            }
+            if !point_to_point_search.can_enter(step.to_coord + step.in_direction.left135()) {
+                if let Some(Stop) = Self::consider(context, point_to_point_search, step.left(), cost, goal) {
+                    return Some(Stop);
+                }
+            }
+            if !point_to_point_search.can_enter(step.to_coord + step.in_direction.right135()) {
+                if let Some(Stop) = Self::consider(context, point_to_point_search, step.right(), cost, goal) {
+                    return Some(Stop);
+                }
+            }
+            None
+        }
+    }
+
+    impl PrivateExpand for expand::Sequential {
+        fn consider<P: PointToPointSearch>(
+            context: &mut Context,
+            point_to_point_search: &P,
+            step: Step,
+            cost: u32,
+            goal: Coord,
+        ) -> Option<Stop> {
             context.consider(point_to_point_search, step, cost, goal)
+        }
+
+        fn expand<P: PointToPointSearch>(
+            context: &mut Context,
+            point_to_point_search: &P,
+            step: Step,
+            cost: u32,
+            goal: Coord,
+        ) -> Option<Stop> {
+            if let Some(Stop) = Self::consider(context, point_to_point_search, step.forward(), cost, goal) {
+                return Some(Stop);
+            }
+            if let Some(Stop) = Self::consider(context, point_to_point_search, step.left(), cost, goal) {
+                return Some(Stop);
+            }
+            if let Some(Stop) = Self::consider(context, point_to_point_search, step.right(), cost, goal) {
+                return Some(Stop);
+            }
+            None
         }
     }
 }
@@ -180,33 +229,81 @@ impl Context {
     fn consider_jps<P: PointToPointSearch>(
         &mut self,
         point_to_point_search: &P,
-        step: Step,
+        mut step: Step,
         cost: u32,
         goal: Coord,
     ) -> Option<Stop> {
-        match jump(point_to_point_search, step, cost, goal) {
-            JumpResult::DeadEnd => None,
-            JumpResult::AtGoal(in_direction) => {
+        let mut jump_cost = 1;
+        'outer: loop {
+            if step.to_coord == goal {
                 let jump = Jump {
-                    in_direction,
+                    in_direction: step.in_direction.scale(jump_cost),
                     to_coord: goal,
                 };
                 self.seen_set.try_visit_jump(jump);
-                Some(Stop)
+                return Some(Stop);
             }
-            JumpResult::ForcedNeighbour { jump, cost } => {
-                if let Some(Visit) = self.seen_set.try_visit_jump(jump) {
-                    let heuristic = step.to_coord.manhattan_distance(goal);
-                    let node = Node {
-                        cost,
-                        cost_plus_heuristic: cost + heuristic,
-                        step: jump.last_step(),
+            if !point_to_point_search.can_enter(step.to_coord) {
+                return None;
+            }
+            if has_forced_neighbour(point_to_point_search, step) {
+                break;
+            }
+            // explore to the left only
+            let mut side_step = step.left();
+            let mut side_jump_cost = 1;
+            'inner: loop {
+                if side_step.to_coord == goal {
+                    let jump_to_intermediate = Jump {
+                        in_direction: step.in_direction.scale(jump_cost),
+                        to_coord: step.to_coord,
                     };
-                    self.priority_queue.push(node);
+                    let jump_to_goal = Jump {
+                        in_direction: side_step.in_direction.scale(side_jump_cost),
+                        to_coord: goal,
+                    };
+                    self.seen_set.try_visit_jump(jump_to_intermediate);
+                    self.seen_set.try_visit_jump(jump_to_goal);
+                    return Some(Stop);
                 }
-                None
+                if !point_to_point_search.can_enter(side_step.to_coord) {
+                    break 'inner;
+                }
+                if has_forced_neighbour(point_to_point_search, side_step) {
+                    let jump_to_side_jump_point = Jump {
+                        in_direction: side_step.in_direction.scale(side_jump_cost),
+                        to_coord: side_step.to_coord,
+                    };
+                    if let Some(Visit) = self.seen_set.try_visit_jump(jump_to_side_jump_point) {
+                        let heuristic = side_step.to_coord.manhattan_distance(goal);
+                        let cost = cost + jump_cost + side_jump_cost;
+                        let node = Node {
+                            cost,
+                            cost_plus_heuristic: cost + heuristic,
+                            step: side_step,
+                        };
+                        self.priority_queue.push(node);
+                    }
+                    break 'outer;
+                }
+                side_step = side_step.forward();
+                side_jump_cost += 1;
             }
+            step = step.forward();
+            jump_cost += 1;
         }
+        let jump = step.scale_back(jump_cost);
+        if let Some(Visit) = self.seen_set.try_visit_jump(jump) {
+            let heuristic = step.to_coord.manhattan_distance(goal);
+            let cost = cost + jump_cost;
+            let node = Node {
+                cost,
+                cost_plus_heuristic: cost + heuristic,
+                step,
+            };
+            self.priority_queue.push(node);
+        }
+        None
     }
 
     fn point_to_point_search_core<S, E, P>(
@@ -229,19 +326,13 @@ impl Context {
         for &in_direction in &UNIT_COORDS {
             let to_coord = start + in_direction.to_coord();
             let step = Step { to_coord, in_direction };
-            if let Some(Stop) = E::expand(self, point_to_point_search, step, 1, goal) {
+            if let Some(Stop) = E::consider(self, point_to_point_search, step, 1, goal) {
                 return Ok(());
             }
         }
         while let Some(Node { cost, step, .. }) = self.priority_queue.pop() {
             profiler.expand();
-            if let Some(Stop) = E::expand(self, point_to_point_search, step.forward(), cost, goal) {
-                return Ok(());
-            }
-            if let Some(Stop) = E::expand(self, point_to_point_search, step.left(), cost, goal) {
-                return Ok(());
-            }
-            if let Some(Stop) = E::expand(self, point_to_point_search, step.right(), cost, goal) {
+            if let Some(Stop) = E::expand(self, point_to_point_search, step, cost, goal) {
                 return Ok(());
             }
         }
@@ -305,53 +396,6 @@ fn has_forced_neighbour<P: PointToPointSearch>(point_to_point_search: &P, step: 
         && point_to_point_search.can_enter(step.to_coord + step.in_direction.left90().to_coord()))
         || (!point_to_point_search.can_enter(step.to_coord + step.in_direction.right135())
             && point_to_point_search.can_enter(step.to_coord + step.in_direction.right90().to_coord()))
-}
-
-enum JumpResult {
-    AtGoal(CardinalCoord),
-    ForcedNeighbour { cost: u32, jump: Jump },
-    DeadEnd,
-}
-
-fn side_jump<P: PointToPointSearch>(point_to_point_search: &P, mut step: Step, goal: Coord) -> bool {
-    loop {
-        if step.to_coord == goal {
-            return true;
-        }
-        if !point_to_point_search.can_enter(step.to_coord) {
-            return false;
-        }
-        if has_forced_neighbour(point_to_point_search, step) {
-            return true;
-        }
-        step = step.forward();
-    }
-}
-
-fn jump<P: PointToPointSearch>(point_to_point_search: &P, mut step: Step, cost: u32, goal: Coord) -> JumpResult {
-    let mut cost_delta = 1;
-    loop {
-        if step.to_coord == goal {
-            return JumpResult::AtGoal(step.in_direction.scale(cost_delta));
-        }
-        if !point_to_point_search.can_enter(step.to_coord) {
-            return JumpResult::DeadEnd;
-        }
-        if has_forced_neighbour(point_to_point_search, step) {
-            return JumpResult::ForcedNeighbour {
-                jump: step.scale_back(cost_delta),
-                cost: cost + cost_delta,
-            };
-        }
-        if side_jump(point_to_point_search, step.left(), goal) || side_jump(point_to_point_search, step.right(), goal) {
-            return JumpResult::ForcedNeighbour {
-                jump: step.scale_back(cost_delta),
-                cost: cost + cost_delta,
-            };
-        }
-        step = step.forward();
-        cost_delta += 1;
-    }
 }
 
 #[cfg(test)]
@@ -603,5 +647,41 @@ mod test {
     #[test]
     fn grid_i() {
         test(GRID_I, None);
+    }
+
+    const GRID_J: &[&str] = &[
+        "..........",
+        "....*.....",
+        "..........",
+        "..........",
+        "...###....",
+        "...#@#....",
+        "...###....",
+        "..........",
+        "..........",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_j() {
+        test(GRID_J, None);
+    }
+
+    const GRID_K: &[&str] = &[
+        "..........",
+        ".#####....",
+        ".....#....",
+        ".###.#....",
+        ".###.####.",
+        "....@...#.",
+        ".###.####.",
+        "...#.#....",
+        "..####....",
+        "..#.*.....",
+    ];
+
+    #[test]
+    fn grid_k() {
+        test(GRID_K, Some(32));
     }
 }

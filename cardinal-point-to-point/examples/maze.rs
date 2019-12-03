@@ -25,6 +25,6 @@ fn main() {
     let maze = generator.generate(start, &mut rng);
     let goal = maze.size().to_coord().unwrap() - Coord::new(1, 1);
     let mut context = Context::new(maze.size());
-    let profile = context.point_to_point_search_profile(expand::JumpPoint, Search { maze: &maze }, start, goal);
+    let (profile, _) = context.point_to_point_search_profile(expand::JumpPoint, Search { maze: &maze }, start, goal);
     println!("{:#?}", profile);
 }

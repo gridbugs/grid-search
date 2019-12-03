@@ -66,9 +66,10 @@ impl Benchmark {
         self.world.grid.size()
     }
     fn search<E: expand::Expand>(&mut self, expand: E) {
-        let first =
-            self.context
-                .point_to_point_search_first(expand, Search { world: &self.world }, self.start, self.goal);
+        let first = self
+            .context
+            .point_to_point_search_first(expand, Search { world: &self.world }, self.start, self.goal)
+            .unwrap();
         assert!(first.is_some());
         black_box(first);
     }
