@@ -100,7 +100,7 @@ pub mod expand {
     impl Expand for Sequential {}
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NoPath;
 
 mod private_expand {
@@ -144,15 +144,11 @@ mod private_expand {
             if let Some(Stop) = Self::consider(context, point_to_point_search, step.forward(), cost, goal) {
                 return Some(Stop);
             }
-            if !point_to_point_search.can_enter(step.to_coord + step.in_direction.left135()) {
-                if let Some(Stop) = Self::consider(context, point_to_point_search, step.left(), cost, goal) {
-                    return Some(Stop);
-                }
+            if let Some(Stop) = Self::consider(context, point_to_point_search, step.left(), cost, goal) {
+                return Some(Stop);
             }
-            if !point_to_point_search.can_enter(step.to_coord + step.in_direction.right135()) {
-                if let Some(Stop) = Self::consider(context, point_to_point_search, step.right(), cost, goal) {
-                    return Some(Stop);
-                }
+            if let Some(Stop) = Self::consider(context, point_to_point_search, step.right(), cost, goal) {
+                return Some(Stop);
             }
             None
         }
@@ -208,16 +204,17 @@ impl Context {
         cost: u32,
         goal: Coord,
     ) -> Option<Stop> {
-        if let Some(Visit) = self.seen_set.try_visit_step(step) {
+        let cost = cost + 1;
+        if let Some(Visit) = self.seen_set.try_visit_step(step, cost) {
+            if step.to_coord == goal {
+                return Some(Stop);
+            }
             if point_to_point_search.can_enter(step.to_coord) {
-                if step.to_coord == goal {
-                    return Some(Stop);
-                }
                 let heuristic = step.to_coord.manhattan_distance(goal);
-                let cost = cost + 1;
+                let cost_plus_heuristic = cost + heuristic;
                 let node = Node {
                     cost,
-                    cost_plus_heuristic: cost + heuristic,
+                    cost_plus_heuristic,
                     step,
                 };
                 self.priority_queue.push(node);
@@ -240,13 +237,13 @@ impl Context {
                     in_direction: step.in_direction.scale(jump_cost),
                     to_coord: goal,
                 };
-                self.seen_set.try_visit_jump(jump);
+                self.seen_set.try_visit_jump(jump, cost + jump_cost);
                 return Some(Stop);
             }
             if !point_to_point_search.can_enter(step.to_coord) {
                 return None;
             }
-            if has_forced_neighbour(point_to_point_search, step) {
+            if has_forced_neighbour(point_to_point_search, step, goal) {
                 break;
             }
             // explore to the left only
@@ -262,19 +259,23 @@ impl Context {
                         in_direction: side_step.in_direction.scale(side_jump_cost),
                         to_coord: goal,
                     };
-                    self.seen_set.try_visit_jump(jump_to_intermediate);
-                    self.seen_set.try_visit_jump(jump_to_goal);
+                    self.seen_set.try_visit_jump(jump_to_intermediate, cost + jump_cost);
+                    self.seen_set
+                        .try_visit_jump(jump_to_goal, cost + jump_cost + side_jump_cost);
                     return Some(Stop);
                 }
                 if !point_to_point_search.can_enter(side_step.to_coord) {
                     break 'inner;
                 }
-                if has_forced_neighbour(point_to_point_search, side_step) {
+                if has_forced_neighbour(point_to_point_search, side_step, goal) {
                     let jump_to_side_jump_point = Jump {
                         in_direction: side_step.in_direction.scale(side_jump_cost),
                         to_coord: side_step.to_coord,
                     };
-                    if let Some(Visit) = self.seen_set.try_visit_jump(jump_to_side_jump_point) {
+                    if let Some(Visit) = self
+                        .seen_set
+                        .try_visit_jump(jump_to_side_jump_point, cost + jump_cost + side_jump_cost)
+                    {
                         let heuristic = side_step.to_coord.manhattan_distance(goal);
                         let cost = cost + jump_cost + side_jump_cost;
                         let node = Node {
@@ -293,9 +294,9 @@ impl Context {
             jump_cost += 1;
         }
         let jump = step.scale_back(jump_cost);
-        if let Some(Visit) = self.seen_set.try_visit_jump(jump) {
+        let cost = cost + jump_cost;
+        if let Some(Visit) = self.seen_set.try_visit_jump(jump, cost) {
             let heuristic = step.to_coord.manhattan_distance(goal);
-            let cost = cost + jump_cost;
             let node = Node {
                 cost,
                 cost_plus_heuristic: cost + heuristic,
@@ -391,17 +392,21 @@ impl Context {
     }
 }
 
-fn has_forced_neighbour<P: PointToPointSearch>(point_to_point_search: &P, step: Step) -> bool {
+fn has_forced_neighbour<P: PointToPointSearch>(point_to_point_search: &P, step: Step, goal: Coord) -> bool {
     (!point_to_point_search.can_enter(step.to_coord + step.in_direction.left135())
-        && point_to_point_search.can_enter(step.to_coord + step.in_direction.left90().to_coord()))
+        && (point_to_point_search.can_enter(step.to_coord + step.in_direction.left90().to_coord())
+            || step.to_coord + step.in_direction.left90().to_coord() == goal))
         || (!point_to_point_search.can_enter(step.to_coord + step.in_direction.right135())
-            && point_to_point_search.can_enter(step.to_coord + step.in_direction.right90().to_coord()))
+            && (point_to_point_search.can_enter(step.to_coord + step.in_direction.right90().to_coord())
+                || step.to_coord + step.in_direction.right90().to_coord() == goal))
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use grid_2d::Grid;
+    use rand::{Rng, SeedableRng};
+    use rand_isaac::Isaac64Rng;
 
     #[derive(Clone)]
     enum Cell {
@@ -413,6 +418,20 @@ mod test {
         grid: Grid<Cell>,
         start: Coord,
         goal: Coord,
+    }
+
+    fn print_test(test: &Test) {
+        for row in test.grid.rows() {
+            print!("\"");
+            for cell in row {
+                let ch = match cell {
+                    Cell::Solid => '#',
+                    Cell::Traversable => '.',
+                };
+                print!("{}", ch);
+            }
+            println!("\",");
+        }
     }
 
     fn str_slice_to_test(str_slice: &[&str]) -> Test {
@@ -436,7 +455,7 @@ mod test {
                         Cell::Traversable
                     }
                     '#' => Cell::Solid,
-                    _ => panic!(),
+                    _ => Cell::Traversable,
                 };
                 *grid.get_checked_mut(coord) = cell;
             }
@@ -446,6 +465,18 @@ mod test {
             start: start.unwrap(),
             goal: goal.unwrap_or(start.unwrap()),
         }
+    }
+
+    fn random_test<R: Rng>(size: Size, rng: &mut R) -> Test {
+        let mut grid = Grid::new_clone(size, Cell::Traversable);
+        let num_solid = size.count() / 4;
+        for _ in 0..num_solid {
+            let coord = Coord::random_within(size, rng);
+            *grid.get_checked_mut(coord) = Cell::Solid;
+        }
+        let start = Coord::new(0, 0);
+        let goal = size.to_coord().unwrap() - Coord::new(1, 1);
+        Test { grid, start, goal }
     }
 
     struct Search<'a> {
@@ -683,5 +714,101 @@ mod test {
     #[test]
     fn grid_k() {
         test(GRID_K, Some(32));
+    }
+
+    const GRID_L: &[&str] = &[
+        ".#........",
+        ".#...#.*#.",
+        "...#...#..",
+        ".#..#.....",
+        ".......#..",
+        ".#...#.#..",
+        "..#.......",
+        "....#..#..",
+        ".@.......#",
+        "...#..#...",
+    ];
+
+    #[test]
+    fn grid_l() {
+        test(GRID_L, Some(13));
+    }
+
+    const GRID_M: &[&str] = &[
+        "@......#..",
+        "..........",
+        ".#....##..",
+        "...###....",
+        "..#..#...#",
+        "..#.##..#.",
+        "......#...",
+        "#...#.....",
+        "...#..#...",
+        "....#....*",
+    ];
+
+    #[test]
+    fn grid_m() {
+        test(GRID_M, Some(18));
+    }
+
+    const GRID_N: &[&str] = &[
+        "@#........",
+        "....#..##.",
+        "..#.....#.",
+        "..#.#..##.",
+        "#.........",
+        "...#.#.#..",
+        "...#..#...",
+        "......#..#",
+        ".......#..",
+        ".#.#....#*",
+    ];
+
+    #[test]
+    fn grid_n() {
+        test(GRID_N, Some(18));
+    }
+
+    const GRID_O: &[&str] = &[
+        "@.........",
+        "##...##...",
+        ".....#....",
+        "#..#...#.#",
+        "..##.#....",
+        "...#......",
+        "...#...###",
+        ".......#..",
+        ".....#....",
+        "...#..#.#*",
+    ];
+
+    #[test]
+    fn grid_o() {
+        test(GRID_O, Some(18));
+    }
+
+    #[test]
+    fn grid_random() {
+        let mut rng = Isaac64Rng::seed_from_u64(0);
+        let num_tests = 1000;
+        let size = Size::new(10, 10);
+        let mut ctx = Context::new(size);
+        let mut path = Path::default();
+        for _ in 0..num_tests {
+            let Test { grid, start, goal } = random_test(size, &mut rng);
+            let seq_result =
+                ctx.point_to_point_search_path(expand::Sequential, Search { grid: &grid }, start, goal, &mut path);
+            let seq_len = path.len();
+            let jps_result =
+                ctx.point_to_point_search_path(expand::JumpPoint, Search { grid: &grid }, start, goal, &mut path);
+            let jps_len = path.len();
+            let test = Test { grid, start, goal };
+            if seq_result != jps_result || seq_len != jps_len {
+                print_test(&test);
+            }
+            assert_eq!(seq_result, jps_result);
+            assert_eq!(seq_len, jps_len);
+        }
     }
 }

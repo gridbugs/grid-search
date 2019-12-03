@@ -6,6 +6,7 @@ use grid_2d::{Coord, Grid, Size};
 
 struct SeenCell {
     count: u64,
+    cost: u32,
     in_direction: Option<CardinalCoord>,
 }
 
@@ -22,6 +23,7 @@ impl SeenSet {
             count: 1,
             grid: Grid::new_fn(size, |_| SeenCell {
                 count: 0,
+                cost: 0,
                 in_direction: None,
             }),
         }
@@ -78,10 +80,11 @@ impl SeenSet {
         cell.in_direction = None;
     }
 
-    fn try_visit(&mut self, to_coord: Coord, in_direction: CardinalCoord) -> Option<Visit> {
+    fn try_visit(&mut self, to_coord: Coord, in_direction: CardinalCoord, cost: u32) -> Option<Visit> {
         if let Some(cell) = self.grid.get_mut(to_coord) {
-            if cell.count != self.count {
+            if cell.count != self.count || cost < cell.cost {
                 cell.count = self.count;
+                cell.cost = cost;
                 cell.in_direction = Some(in_direction);
                 return Some(Visit);
             }
@@ -89,11 +92,11 @@ impl SeenSet {
         None
     }
 
-    pub fn try_visit_step(&mut self, step: Step) -> Option<Visit> {
-        self.try_visit(step.to_coord, step.in_direction.to_cardinal_coord())
+    pub fn try_visit_step(&mut self, step: Step, cost: u32) -> Option<Visit> {
+        self.try_visit(step.to_coord, step.in_direction.to_cardinal_coord(), cost)
     }
 
-    pub fn try_visit_jump(&mut self, jump: Jump) -> Option<Visit> {
-        self.try_visit(jump.to_coord, jump.in_direction)
+    pub fn try_visit_jump(&mut self, jump: Jump, cost: u32) -> Option<Visit> {
+        self.try_visit(jump.to_coord, jump.in_direction, cost)
     }
 }

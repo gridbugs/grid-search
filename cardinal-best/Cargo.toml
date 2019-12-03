@@ -15,3 +15,6 @@ serde = { version = "1.0", features = ["serde_derive"], optional = true }
 
 [dev-dependencies]
 grid_2d = "0.14"
+coord_2d = { version = "0.2", features = ["rand"] }
+rand = "0.7"
+rand_isaac = "0.2"

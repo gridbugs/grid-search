@@ -10,7 +10,7 @@ use grid_search_cardinal_common::{
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-pub type Depth = u64;
+pub type Depth = u32;
 
 pub struct Context {
     seen_set: SeenSet,
@@ -46,7 +46,7 @@ impl Context {
     }
 
     fn consider<B: BestSearch>(&mut self, best_search: &mut B, step: Step, depth: Depth) {
-        if let Some(Visit) = self.seen_set.try_visit_step(step) {
+        if let Some(Visit) = self.seen_set.try_visit_step(step, depth) {
             if best_search.can_enter_updating_best(step.to_coord) {
                 if !best_search.is_at_max_depth(depth) {
                     self.queue.push_back((step, depth));
@@ -99,6 +99,8 @@ impl Context {
 mod test {
     use super::*;
     use grid_2d::Grid;
+    use rand::{Rng, SeedableRng};
+    use rand_isaac::Isaac64Rng;
 
     #[derive(Clone)]
     enum Cell {
@@ -138,6 +140,20 @@ mod test {
             grid,
             start: start.unwrap(),
         }
+    }
+
+    fn random_test<R: Rng>(size: Size, rng: &mut R) -> Test {
+        let mut grid = Grid::new_fn(size, |_| {
+            let score = rng.gen();
+            Cell::Traversable(score)
+        });
+        let num_solid = size.count() / 4;
+        for _ in 0..num_solid {
+            let coord = Coord::random_within(size, rng);
+            *grid.get_checked_mut(coord) = Cell::Solid;
+        }
+        let start = Coord::new(0, 0);
+        Test { grid, start }
     }
 
     fn str_slice_to_test_start_score(str_slice: &[&str], start_score: u8) -> Test {
@@ -284,5 +300,18 @@ mod test {
         assert_eq!(path.len(), 0);
         ctx.best_search_path(ConstrainedSearch::new(0, &grid), start, &mut path);
         assert_eq!(path.len(), 0);
+    }
+
+    #[test]
+    fn grid_random() {
+        let mut rng = Isaac64Rng::seed_from_u64(0);
+        let num_tests = 1000;
+        let size = Size::new(10, 10);
+        let mut ctx = Context::new(size);
+        let mut path = Path::default();
+        for _ in 0..num_tests {
+            let Test { grid, start } = random_test(size, &mut rng);
+            ctx.best_search_path(ConstrainedSearch::new(100, &grid), start, &mut path);
+        }
     }
 }
