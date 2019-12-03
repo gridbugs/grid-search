@@ -37,7 +37,6 @@ impl SeenSet {
         let mut coord = end;
         path.clear();
         while let Some(in_direction) = cell.in_direction {
-            println!("building path to_coord {:?} in_direction {:?}", coord, in_direction);
             let mut step = Step {
                 to_coord: coord,
                 in_direction: in_direction.to_unit_coord(),
@@ -47,7 +46,6 @@ impl SeenSet {
                 step.to_coord -= step.in_direction.to_coord();
             }
             coord = step.to_coord;
-            println!("next coord {:?}, in_direction: {:?}", coord, in_direction);
             cell = self.grid.get_checked(coord);
             debug_assert_eq!(
                 cell.count, self.count,
@@ -81,10 +79,8 @@ impl SeenSet {
     }
 
     fn try_visit(&mut self, to_coord: Coord, in_direction: CardinalCoord) -> Option<Visit> {
-        println!("trying visit {:?} {:?}", to_coord, in_direction);
         if let Some(cell) = self.grid.get_mut(to_coord) {
             if cell.count != self.count {
-                println!("visited {:?} {:?}", to_coord, in_direction);
                 cell.count = self.count;
                 cell.in_direction = Some(in_direction);
                 return Some(Visit);

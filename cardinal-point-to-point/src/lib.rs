@@ -90,12 +90,18 @@ pub mod expand {
     use super::private_expand::PrivateExpand;
     pub trait Expand: PrivateExpand {}
 
+    #[derive(Debug, Clone, Copy)]
     pub struct JumpPoint;
+
+    #[derive(Debug, Clone, Copy)]
     pub struct Sequential;
 
     impl Expand for JumpPoint {}
     impl Expand for Sequential {}
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct NoPath;
 
 mod private_expand {
     use super::{expand, Context, Coord, PointToPointSearch, Step};
@@ -171,105 +177,6 @@ impl Context {
         None
     }
 
-    fn point_to_point_search_core_general<S: PointToPointSearch, E: Expand, P: Profiler>(
-        &mut self,
-        point_to_point_search: &S,
-        start: Coord,
-        goal: Coord,
-        profiler: &mut P,
-    ) {
-        self.seen_set.init(start);
-        self.priority_queue.clear();
-        if start == goal {
-            return;
-        }
-        for &in_direction in &UNIT_COORDS {
-            let to_coord = start + in_direction.to_coord();
-            let step = Step { to_coord, in_direction };
-            if let Some(Stop) = E::expand(self, point_to_point_search, step, 1, goal) {
-                return;
-            }
-        }
-        while let Some(Node { cost, step, .. }) = self.priority_queue.pop() {
-            profiler.expand();
-            if let Some(Stop) = E::expand(self, point_to_point_search, step.forward(), cost, goal) {
-                return;
-            }
-            if let Some(Stop) = E::expand(self, point_to_point_search, step.left(), cost, goal) {
-                return;
-            }
-            if let Some(Stop) = E::expand(self, point_to_point_search, step.right(), cost, goal) {
-                return;
-            }
-        }
-    }
-
-    fn point_to_point_search_core<S: PointToPointSearch, P: Profiler>(
-        &mut self,
-        point_to_point_search: &S,
-        start: Coord,
-        goal: Coord,
-        profiler: &mut P,
-    ) {
-        self.seen_set.init(start);
-        self.priority_queue.clear();
-        if start == goal {
-            return;
-        }
-        for &in_direction in &UNIT_COORDS {
-            let to_coord = start + in_direction.to_coord();
-            let step = Step { to_coord, in_direction };
-            if let Some(Stop) = self.consider(point_to_point_search, step, 1, goal) {
-                return;
-            }
-        }
-        while let Some(Node { cost, step, .. }) = self.priority_queue.pop() {
-            profiler.expand();
-            let next_cost = cost + 1;
-            if let Some(Stop) = self.consider(point_to_point_search, step.forward(), next_cost, goal) {
-                return;
-            }
-            if let Some(Stop) = self.consider(point_to_point_search, step.left(), next_cost, goal) {
-                return;
-            }
-            if let Some(Stop) = self.consider(point_to_point_search, step.right(), next_cost, goal) {
-                return;
-            }
-        }
-    }
-
-    pub fn point_to_point_search_path<P: PointToPointSearch>(
-        &mut self,
-        point_to_point_search: P,
-        start: Coord,
-        goal: Coord,
-        path: &mut Path,
-    ) {
-        self.point_to_point_search_core(&point_to_point_search, start, goal, &mut ());
-        self.seen_set.build_path_to(goal, path);
-    }
-
-    pub fn point_to_point_search_first<P: PointToPointSearch>(
-        &mut self,
-        point_to_point_search: P,
-        start: Coord,
-        goal: Coord,
-    ) -> Option<CardinalDirection> {
-        self.point_to_point_search_core(&point_to_point_search, start, goal, &mut ());
-        self.seen_set.first_direction_towards(goal)
-    }
-
-    pub fn point_to_point_search_profile<P: PointToPointSearch>(
-        &mut self,
-        point_to_point_search: P,
-        start: Coord,
-        goal: Coord,
-    ) -> Profile {
-        let mut profile = Profile::default();
-        self.point_to_point_search_core(&point_to_point_search, start, goal, &mut profile);
-        profile
-    }
-
     fn consider_jps<P: PointToPointSearch>(
         &mut self,
         point_to_point_search: &P,
@@ -302,49 +209,94 @@ impl Context {
         }
     }
 
-    fn point_to_point_search_jps_core<S: PointToPointSearch, P: Profiler>(
+    fn point_to_point_search_core<S, E, P>(
         &mut self,
         point_to_point_search: &S,
         start: Coord,
         goal: Coord,
         profiler: &mut P,
-    ) {
+    ) -> Result<(), NoPath>
+    where
+        S: PointToPointSearch,
+        E: Expand,
+        P: Profiler,
+    {
         self.seen_set.init(start);
         self.priority_queue.clear();
         if start == goal {
-            return;
+            return Ok(());
         }
         for &in_direction in &UNIT_COORDS {
             let to_coord = start + in_direction.to_coord();
             let step = Step { to_coord, in_direction };
-            profiler.expand();
-            if let Some(Stop) = self.consider_jps(point_to_point_search, step, 1, goal) {
-                return;
+            if let Some(Stop) = E::expand(self, point_to_point_search, step, 1, goal) {
+                return Ok(());
             }
         }
         while let Some(Node { cost, step, .. }) = self.priority_queue.pop() {
             profiler.expand();
-            if let Some(Stop) = self.consider_jps(point_to_point_search, step.forward(), cost, goal) {
-                return;
+            if let Some(Stop) = E::expand(self, point_to_point_search, step.forward(), cost, goal) {
+                return Ok(());
             }
-            if let Some(Stop) = self.consider_jps(point_to_point_search, step.left(), cost, goal) {
-                return;
+            if let Some(Stop) = E::expand(self, point_to_point_search, step.left(), cost, goal) {
+                return Ok(());
             }
-            if let Some(Stop) = self.consider_jps(point_to_point_search, step.right(), cost, goal) {
-                return;
+            if let Some(Stop) = E::expand(self, point_to_point_search, step.right(), cost, goal) {
+                return Ok(());
             }
         }
+        Err(NoPath)
     }
 
-    pub fn point_to_point_search_jps_path<P: PointToPointSearch>(
+    pub fn point_to_point_search_path<S, E>(
         &mut self,
-        point_to_point_search: P,
+        expand: E,
+        point_to_point_search: S,
         start: Coord,
         goal: Coord,
         path: &mut Path,
-    ) {
-        self.point_to_point_search_jps_core(&point_to_point_search, start, goal, &mut ());
+    ) -> Result<(), NoPath>
+    where
+        S: PointToPointSearch,
+        E: Expand,
+    {
+        let _ = expand;
+        self.point_to_point_search_core::<_, E, _>(&point_to_point_search, start, goal, &mut ())?;
         self.seen_set.build_path_to(goal, path);
+        Ok(())
+    }
+
+    pub fn point_to_point_search_first<S, E>(
+        &mut self,
+        expand: E,
+        point_to_point_search: S,
+        start: Coord,
+        goal: Coord,
+    ) -> Result<Option<CardinalDirection>, NoPath>
+    where
+        S: PointToPointSearch,
+        E: Expand,
+    {
+        let _ = expand;
+        self.point_to_point_search_core::<_, E, _>(&point_to_point_search, start, goal, &mut ())?;
+        Ok(self.seen_set.first_direction_towards(goal))
+    }
+
+    pub fn point_to_point_search_profile<S, E>(
+        &mut self,
+        expand: E,
+        point_to_point_search: S,
+        start: Coord,
+        goal: Coord,
+    ) -> (Profile, Result<(), NoPath>)
+    where
+        S: PointToPointSearch,
+        E: Expand,
+    {
+        let _ = expand;
+        let mut profile = Profile::default();
+        let result = self.point_to_point_search_core::<_, E, _>(&point_to_point_search, start, goal, &mut profile);
+        (profile, result)
     }
 }
 
@@ -469,6 +421,28 @@ mod test {
         }
     }
 
+    fn test(grid_str_slice: &[&str], len: Option<usize>) {
+        let Test { grid, start, goal } = str_slice_to_test(grid_str_slice);
+        let mut ctx = Context::new(grid.size());
+        let mut path = Path::default();
+        match len {
+            Some(len) => {
+                ctx.point_to_point_search_path(expand::Sequential, Search { grid: &grid }, start, goal, &mut path)
+                    .unwrap();
+                assert_eq!(path.len(), len);
+                ctx.point_to_point_search_path(expand::JumpPoint, Search { grid: &grid }, start, goal, &mut path)
+                    .unwrap();
+                assert_eq!(path.len(), len);
+            }
+            None => {
+                ctx.point_to_point_search_path(expand::Sequential, Search { grid: &grid }, start, goal, &mut path)
+                    .unwrap_err();
+                ctx.point_to_point_search_path(expand::JumpPoint, Search { grid: &grid }, start, goal, &mut path)
+                    .unwrap_err();
+            }
+        }
+    }
+
     const GRID_A: &[&str] = &[
         "..........",
         ".......*..",
@@ -483,19 +457,8 @@ mod test {
     ];
 
     #[test]
-    fn grid_jps() {
-        let Test { grid, start, goal } = str_slice_to_test(GRID_A);
-        let mut ctx = Context::new(grid.size());
-        ctx.point_to_point_search_jps_core(&mut Search { grid: &grid }, start, goal, &mut ());
-    }
-
-    #[test]
     fn grid_a() {
-        let Test { grid, start, goal } = str_slice_to_test(GRID_A);
-        let mut ctx = Context::new(grid.size());
-        let mut path = Path::default();
-        ctx.point_to_point_search_path(Search { grid: &grid }, start, goal, &mut path);
-        assert_eq!(path.len(), 13);
+        test(GRID_A, Some(13));
     }
 
     const GRID_B: &[&str] = &[
@@ -513,11 +476,7 @@ mod test {
 
     #[test]
     fn grid_b() {
-        let Test { grid, start, goal } = str_slice_to_test(GRID_B);
-        let mut ctx = Context::new(grid.size());
-        let mut path = Path::default();
-        ctx.point_to_point_search_jps_path(Search { grid: &grid }, start, goal, &mut path);
-        assert_eq!(path.len(), 22);
+        test(GRID_B, Some(22));
     }
 
     const GRID_C: &[&str] = &[
@@ -535,11 +494,7 @@ mod test {
 
     #[test]
     fn grid_c() {
-        let Test { grid, start, goal } = str_slice_to_test(GRID_C);
-        let mut ctx = Context::new(grid.size());
-        let mut path = Path::default();
-        ctx.point_to_point_search_path(Search { grid: &grid }, start, goal, &mut path);
-        assert_eq!(path.len(), 1);
+        test(GRID_C, Some(1));
     }
 
     const GRID_D: &[&str] = &[
@@ -557,10 +512,96 @@ mod test {
 
     #[test]
     fn grid_d() {
-        let Test { grid, start, goal } = str_slice_to_test(GRID_D);
-        let mut ctx = Context::new(grid.size());
-        let mut path = Path::default();
-        ctx.point_to_point_search_path(Search { grid: &grid }, start, goal, &mut path);
-        assert_eq!(path.len(), 0);
+        test(GRID_D, Some(0));
+    }
+
+    const GRID_E: &[&str] = &[
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..........",
+        "..*.......",
+        ".@........",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_e() {
+        test(GRID_E, Some(2));
+    }
+
+    const GRID_F: &[&str] = &[
+        "..........",
+        ".......#.#",
+        ".......#.#",
+        ".......#.#",
+        ".......#*#",
+        ".......#.#",
+        ".......#.#",
+        ".......###",
+        ".@........",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_f() {
+        test(GRID_F, Some(19));
+    }
+
+    const GRID_G: &[&str] = &[
+        "..........",
+        ".......#.#",
+        ".......#.#",
+        ".......#.#",
+        ".......#.#",
+        ".......#.#",
+        ".......#*#",
+        ".......###",
+        ".@........",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_g() {
+        test(GRID_G, Some(21));
+    }
+
+    const GRID_H: &[&str] = &[
+        "..........",
+        "....@.....",
+        "..........",
+        "...###....",
+        "..........",
+        "..##......",
+        "..........",
+        ".....##...",
+        "....*.....",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_h() {
+        test(GRID_H, Some(11));
+    }
+
+    const GRID_I: &[&str] = &[
+        "..........",
+        "....@.....",
+        "..........",
+        "..........",
+        "...###....",
+        "...#*#....",
+        "...###....",
+        "..........",
+        "..........",
+        "..........",
+    ];
+
+    #[test]
+    fn grid_i() {
+        test(GRID_I, None);
     }
 }

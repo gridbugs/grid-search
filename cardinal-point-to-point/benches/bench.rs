@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use grid_2d::{Coord, Grid, Size};
-use grid_search_cardinal_point_to_point::{Context, PointToPointSearch};
+use grid_search_cardinal_point_to_point::{expand, Context, PointToPointSearch};
 use grid_search_maze::{MazeCell, MazeGenerator};
 use rand::{Rng, SeedableRng};
 use rand_isaac::Isaac64Rng;
@@ -19,7 +19,7 @@ struct Search<'a> {
 
 impl<'a> PointToPointSearch for Search<'a> {
     fn can_enter(&self, coord: Coord) -> bool {
-        self.world.grid.get(coord).map(|cell| !cell.solid).unwrap_or(true)
+        self.world.grid.get(coord).map(|cell| !cell.solid).unwrap_or(false)
     }
 }
 
@@ -65,12 +65,20 @@ impl Benchmark {
     fn size(&self) -> Size {
         self.world.grid.size()
     }
-    fn search(&mut self) {
-        let first = self
-            .context
-            .point_to_point_search_first(Search { world: &self.world }, self.start, self.goal);
+    fn search<E: expand::Expand>(&mut self, expand: E) {
+        let first =
+            self.context
+                .point_to_point_search_first(expand, Search { world: &self.world }, self.start, self.goal);
         assert!(first.is_some());
         black_box(first);
+    }
+    fn add(mut self, c: &mut Criterion, name: String) {
+        c.bench_function(&format!("{} {:?}", name, expand::Sequential), |b| {
+            b.iter(|| self.search(expand::Sequential))
+        });
+        c.bench_function(&format!("{} {:?}", name, expand::JumpPoint), |b| {
+            b.iter(|| self.search(expand::JumpPoint))
+        });
     }
 }
 
@@ -79,15 +87,13 @@ fn format_size(size: Size) -> String {
 }
 
 fn empty(c: &mut Criterion, size: Size) {
-    let name = format!("empty {}", format_size(size));
-    let mut benchmark = Benchmark::new_empty(size);
-    c.bench_function(name.as_str(), |b| b.iter(|| benchmark.search()));
+    Benchmark::new_empty(size).add(c, format!("empty {}", format_size(size)));
 }
 
 fn maze(c: &mut Criterion, size: Size, seed: u64) {
-    let mut benchmark = Benchmark::new_maze(size, seed);
+    let benchmark = Benchmark::new_maze(size, seed);
     let name = format!("maze (seed = {}) {}", seed, format_size(benchmark.size()));
-    c.bench_function(name.as_str(), |b| b.iter(|| benchmark.search()));
+    benchmark.add(c, name);
 }
 
 fn maze_benchmark(c: &mut Criterion) {
@@ -105,13 +111,11 @@ fn empty_benchmark(c: &mut Criterion) {
     empty(c, Size::new(9, 9));
     empty(c, Size::new(99, 99));
     empty(c, Size::new(199, 199));
-    empty(c, Size::new(999, 999));
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
     maze_benchmark(c);
     empty_benchmark(c);
 }
-
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
