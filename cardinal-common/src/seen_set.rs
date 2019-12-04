@@ -4,12 +4,14 @@ use crate::step::{Jump, Step};
 use direction::CardinalDirection;
 use grid_2d::{Coord, Grid, Size};
 
+#[derive(Debug, Clone)]
 struct SeenCell {
     count: u64,
     cost: u32,
     in_direction: Option<CardinalCoord>,
 }
 
+#[derive(Debug, Clone)]
 pub struct SeenSet {
     count: u64,
     grid: Grid<SeenCell>,

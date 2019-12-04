@@ -6,35 +6,44 @@ use grid_search_cardinal_common::{
     seen_set::{SeenSet, Visit},
     step::Step,
 };
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 pub type Distance = u32;
 
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone)]
 struct Cell {
     count: u64,
     distance: Distance,
 }
 
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone)]
 pub struct DistanceMap {
     count: u64,
     grid: Grid<Cell>,
 }
 
+#[derive(Debug, Clone)]
 struct PopulateNode {
     coord: Coord,
     distance: Distance,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct PopulateContext {
     queue: VecDeque<PopulateNode>,
 }
 
+#[derive(Debug, Clone)]
 struct SearchNode {
     step: Step,
     distance: Distance,
 }
 
+#[derive(Debug, Clone)]
 pub struct SearchContext {
     seen_set: SeenSet,
     queue: VecDeque<SearchNode>,
@@ -47,6 +56,35 @@ struct SearchState {
 
 pub trait CanEnter {
     fn can_enter(&self, coord: Coord) -> bool;
+}
+
+#[cfg(feature = "serialize")]
+impl Serialize for PopulateContext {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        ().serialize(s)
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl<'a> Deserialize<'a> for PopulateContext {
+    fn deserialize<D: serde::Deserializer<'a>>(d: D) -> Result<Self, D::Error> {
+        let () = Deserialize::deserialize(d)?;
+        Ok(Self::default())
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl Serialize for SearchContext {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.seen_set.size().serialize(s)
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl<'a> Deserialize<'a> for SearchContext {
+    fn deserialize<D: serde::Deserializer<'a>>(d: D) -> Result<Self, D::Error> {
+        Deserialize::deserialize(d).map(Self::new)
+    }
 }
 
 impl DistanceMap {
