@@ -12,9 +12,14 @@ use std::collections::VecDeque;
 
 pub type Depth = u32;
 
+struct Node {
+    step: Step,
+    depth: Depth,
+}
+
 pub struct Context {
     seen_set: SeenSet,
-    queue: VecDeque<(Step, Depth)>,
+    queue: VecDeque<Node>,
 }
 
 #[cfg(feature = "serialize")]
@@ -49,7 +54,7 @@ impl Context {
         if let Some(Visit) = self.seen_set.try_visit_step(step, depth) {
             if best_search.can_enter_updating_best(step.to_coord) {
                 if !best_search.is_at_max_depth(depth) {
-                    self.queue.push_back((step, depth));
+                    self.queue.push_back(Node { step, depth });
                 }
             }
         }
@@ -74,7 +79,7 @@ impl Context {
         if best_search.is_at_max_depth(1) {
             return;
         }
-        while let Some((step, depth)) = self.queue.pop_front() {
+        while let Some(Node { step, depth }) = self.queue.pop_front() {
             let next_depth = depth + 1;
             self.consider(best_search, step.forward(), next_depth);
             self.consider(best_search, step.left(), next_depth);

@@ -1,10 +1,18 @@
 use direction::{CardinalDirection, CardinalDirections};
 use grid_2d::{Coord, Grid, Size};
+use grid_search_cardinal_common::{
+    coord::UNIT_COORDS,
+    path::Path,
+    seen_set::{SeenSet, Visit},
+    step::Step,
+};
 use std::collections::VecDeque;
+
+pub type Distance = u32;
 
 struct Cell {
     count: u64,
-    distance: u32,
+    distance: Distance,
 }
 
 pub struct DistanceMap {
@@ -12,14 +20,33 @@ pub struct DistanceMap {
     grid: Grid<Cell>,
 }
 
-struct Node {
+struct PopulateNode {
     coord: Coord,
-    distance: u32,
+    distance: Distance,
 }
 
 #[derive(Default)]
-pub struct Context {
-    queue: VecDeque<Node>,
+pub struct PopulateContext {
+    queue: VecDeque<PopulateNode>,
+}
+
+struct SearchNode {
+    step: Step,
+    distance: Distance,
+}
+
+pub struct SearchContext {
+    seen_set: SeenSet,
+    queue: VecDeque<SearchNode>,
+}
+
+struct SearchState {
+    distance_to_goal: Distance,
+    closest_coord: Coord,
+}
+
+pub trait CanEnter {
+    fn can_enter(&self, coord: Coord) -> bool;
 }
 
 impl DistanceMap {
@@ -32,6 +59,10 @@ impl DistanceMap {
 
     pub fn clear(&mut self) {
         self.count += 1;
+    }
+
+    pub fn size(&self) -> Size {
+        self.grid.size()
     }
 
     pub fn direction_to_best_neighbour(&self, coord: Coord) -> Option<CardinalDirection> {
@@ -52,7 +83,7 @@ impl DistanceMap {
         direction_to_best_neighbour
     }
 
-    pub fn distance(&self, coord: Coord) -> Option<u32> {
+    pub fn distance(&self, coord: Coord) -> Option<Distance> {
         if let Some(cell) = self.grid.get(coord) {
             if cell.count == self.count {
                 return Some(cell.distance);
@@ -62,20 +93,21 @@ impl DistanceMap {
     }
 }
 
-pub trait CanEnter {
-    fn can_enter(&self, coord: Coord) -> bool;
-}
-
-impl Context {
+impl PopulateContext {
     pub fn clear(&mut self) {
         self.queue.clear();
     }
 
     pub fn add(&mut self, coord: Coord) {
-        self.queue.push_front(Node { coord, distance: 0 });
+        self.queue.push_front(PopulateNode { coord, distance: 0 });
     }
 
-    pub fn populate_approach<C: CanEnter>(&mut self, can_enter: &C, max_distance: u32, distance_map: &mut DistanceMap) {
+    pub fn populate_approach<C: CanEnter>(
+        &mut self,
+        can_enter: &C,
+        max_distance: Distance,
+        distance_map: &mut DistanceMap,
+    ) {
         distance_map.clear();
         for node in self.queue.iter() {
             if let Some(cell) = distance_map.grid.get_mut(node.coord) {
@@ -87,7 +119,7 @@ impl Context {
             self.queue.clear();
             return;
         }
-        while let Some(Node { coord, distance }) = self.queue.pop_back() {
+        while let Some(PopulateNode { coord, distance }) = self.queue.pop_back() {
             debug_assert!(distance < max_distance);
             let neighbour_distance = distance + 1;
             for direction in CardinalDirections {
@@ -98,7 +130,7 @@ impl Context {
                             cell.count = distance_map.count;
                             cell.distance = neighbour_distance;
                             if neighbour_distance != max_distance {
-                                self.queue.push_front(Node {
+                                self.queue.push_front(PopulateNode {
                                     coord: neighbour_coord,
                                     distance: neighbour_distance,
                                 });
@@ -110,7 +142,12 @@ impl Context {
         }
     }
 
-    pub fn populate_flee<C: CanEnter>(&mut self, can_enter: &C, max_distance: u32, distance_map: &mut DistanceMap) {
+    pub fn populate_flee<C: CanEnter>(
+        &mut self,
+        can_enter: &C,
+        max_distance: Distance,
+        distance_map: &mut DistanceMap,
+    ) {
         distance_map.count += 1;
         for node in self.queue.iter() {
             if let Some(cell) = distance_map.grid.get_mut(node.coord) {
@@ -122,10 +159,10 @@ impl Context {
             self.queue.clear();
             return;
         }
-        while let Some(Node { coord, distance }) = self.queue.pop_back() {
+        while let Some(PopulateNode { coord, distance }) = self.queue.pop_back() {
             debug_assert!(distance <= max_distance);
             if distance == max_distance {
-                self.queue.push_back(Node { coord, distance });
+                self.queue.push_back(PopulateNode { coord, distance });
                 break;
             }
             let neighbour_distance = distance + 1;
@@ -136,7 +173,7 @@ impl Context {
                         if cell.count != distance_map.count {
                             cell.count = distance_map.count;
                             cell.distance = neighbour_distance;
-                            self.queue.push_front(Node {
+                            self.queue.push_front(PopulateNode {
                                 coord: neighbour_coord,
                                 distance: neighbour_distance,
                             });
@@ -158,7 +195,7 @@ impl Context {
                 cell.distance = 0;
             }
         }
-        while let Some(Node { coord, distance }) = self.queue.pop_back() {
+        while let Some(PopulateNode { coord, distance }) = self.queue.pop_back() {
             let neighbour_distance = distance + 1;
             for direction in CardinalDirections {
                 let neighbour_coord = coord + direction.coord();
@@ -166,13 +203,127 @@ impl Context {
                     if cell.count == distance_map.count - 1 {
                         cell.count += 1;
                         cell.distance = neighbour_distance;
-                        self.queue.push_front(Node {
+                        self.queue.push_front(PopulateNode {
                             coord: neighbour_coord,
                             distance: neighbour_distance,
                         });
                     }
                 }
             }
+        }
+    }
+}
+
+impl SearchContext {
+    pub fn new(size: Size) -> Self {
+        Self {
+            seen_set: SeenSet::new(size),
+            queue: VecDeque::new(),
+        }
+    }
+
+    fn consider<C: CanEnter>(
+        &mut self,
+        can_enter: &C,
+        step: Step,
+        distance: Distance,
+        max_distance: Distance,
+        distance_map: &DistanceMap,
+        search_state: &mut SearchState,
+    ) {
+        if let Some(Visit) = self.seen_set.try_visit_step(step, distance) {
+            if can_enter.can_enter(step.to_coord) {
+                if let Some(distance_to_goal) = distance_map.distance(step.to_coord) {
+                    if distance <= max_distance {
+                        if distance_to_goal < search_state.distance_to_goal {
+                            search_state.closest_coord = step.to_coord;
+                            search_state.distance_to_goal = distance_to_goal;
+                        }
+                        self.queue.push_back(SearchNode { step, distance });
+                    }
+                }
+            }
+        }
+    }
+
+    fn search_core<C: CanEnter>(
+        &mut self,
+        can_enter: &C,
+        start: Coord,
+        max_distance: Distance,
+        distance_map: &DistanceMap,
+    ) -> Option<Coord> {
+        let mut search_state = if let Some(distance_to_goal) = distance_map.distance(start) {
+            SearchState {
+                distance_to_goal,
+                closest_coord: start,
+            }
+        } else {
+            return None;
+        };
+        self.seen_set.init(start);
+        self.queue.clear();
+        for &in_direction in &UNIT_COORDS {
+            let step = Step {
+                to_coord: start + in_direction.to_coord(),
+                in_direction,
+            };
+            self.consider(can_enter, step, 1, max_distance, distance_map, &mut search_state);
+        }
+        while let Some(SearchNode { step, distance }) = self.queue.pop_front() {
+            let next_distance = distance + 1;
+            self.consider(
+                can_enter,
+                step.forward(),
+                next_distance,
+                max_distance,
+                distance_map,
+                &mut search_state,
+            );
+            self.consider(
+                can_enter,
+                step.left(),
+                next_distance,
+                max_distance,
+                distance_map,
+                &mut search_state,
+            );
+            self.consider(
+                can_enter,
+                step.right(),
+                next_distance,
+                max_distance,
+                distance_map,
+                &mut search_state,
+            );
+        }
+        Some(search_state.closest_coord)
+    }
+
+    pub fn search_path<C: CanEnter>(
+        &mut self,
+        can_enter: &C,
+        start: Coord,
+        max_distance: Distance,
+        distance_map: &DistanceMap,
+        path: &mut Path,
+    ) {
+        if let Some(end) = self.search_core(can_enter, start, max_distance, distance_map) {
+            self.seen_set.build_path_to(end, path);
+        }
+    }
+
+    pub fn search_first<C: CanEnter>(
+        &mut self,
+        can_enter: &C,
+        start: Coord,
+        max_distance: Distance,
+        distance_map: &DistanceMap,
+    ) -> Option<CardinalDirection> {
+        if let Some(end) = self.search_core(can_enter, start, max_distance, distance_map) {
+            self.seen_set.first_direction_towards(end)
+        } else {
+            None
         }
     }
 }
@@ -253,13 +404,16 @@ mod test {
 
     #[test]
     fn grid_a() {
+        use CardinalDirection::*;
+        let mut path = Path::default();
         let Test { world, goals } = Test::from_str_slice(GRID_A);
-        let mut context = Context::default();
+        let mut populate_context = PopulateContext::default();
         let mut distance_map = DistanceMap::new(world.grid.size());
+        let mut search_context = SearchContext::new(distance_map.size());
         for &coord in &goals {
-            context.add(coord);
+            populate_context.add(coord);
         }
-        context.populate_approach(&world, 7, &mut distance_map);
+        populate_context.populate_approach(&world, 7, &mut distance_map);
         assert_eq!(distance_map.distance(Coord::new(4, 6)), Some(5));
         assert_eq!(distance_map.distance(Coord::new(4, 5)), Some(6));
         assert_eq!(distance_map.distance(Coord::new(3, 5)), Some(7));
@@ -270,11 +424,14 @@ mod test {
             distance_map.direction_to_best_neighbour(Coord::new(4, 6)),
             Some(CardinalDirection::South)
         );
+        search_context.search_path(&world, Coord::new(7, 7), 100, &distance_map, &mut path);
+        let directions = path.iter().map(|n| n.in_direction).collect::<Vec<_>>();
+        assert_eq!(&directions, &[West, West, West, West, West, West, South]);
         assert_eq!(distance_map.direction_to_best_neighbour(Coord::new(1, 8)), None,);
         for &coord in &goals {
-            context.add(coord);
+            populate_context.add(coord);
         }
-        context.populate_flee(&world, 10, &mut distance_map);
+        populate_context.populate_flee(&world, 10, &mut distance_map);
         assert_eq!(distance_map.distance(Coord::new(4, 6)), Some(5));
         assert_eq!(distance_map.distance(Coord::new(9, 7)), Some(11));
         assert_eq!(distance_map.distance(Coord::new(1, 8)), Some(10));
@@ -282,6 +439,9 @@ mod test {
             distance_map.direction_to_best_neighbour(Coord::new(1, 7)),
             Some(CardinalDirection::East)
         );
+        search_context.search_path(&world, Coord::new(7, 7), 5, &distance_map, &mut path);
+        let directions = path.iter().map(|n| n.in_direction).collect::<Vec<_>>();
+        assert_eq!(&directions, &[West, West, West, North, North]);
     }
 
     const GRID_B: &[&str] = &[
@@ -300,12 +460,17 @@ mod test {
     #[test]
     fn grid_b() {
         let Test { world, .. } = Test::from_str_slice(GRID_B);
-        let mut context = Context::default();
+        let mut populate_context = PopulateContext::default();
         let mut distance_map = DistanceMap::new(world.grid.size());
-        context.populate_approach(&world, 7, &mut distance_map);
+        let mut search_context = SearchContext::new(distance_map.size());
+        populate_context.populate_approach(&world, 7, &mut distance_map);
         assert_eq!(distance_map.distance(Coord::new(4, 5)), None);
-        context.populate_flee(&world, 7, &mut distance_map);
+        populate_context.populate_flee(&world, 7, &mut distance_map);
         assert_eq!(distance_map.distance(Coord::new(4, 5)), None);
+        let mut path = Path::default();
+        search_context.search_path(&world, Coord::new(7, 7), 5, &distance_map, &mut path);
+        let directions = path.iter().map(|n| n.in_direction).collect::<Vec<_>>();
+        assert_eq!(&directions, &[]);
     }
 
     const GRID_C: &[&str] = &[
@@ -324,21 +489,21 @@ mod test {
     #[test]
     fn grid_c() {
         let Test { world, goals } = Test::from_str_slice(GRID_C);
-        let mut context = Context::default();
+        let mut populate_context = PopulateContext::default();
         let mut distance_map = DistanceMap::new(world.grid.size());
         for &coord in &goals {
-            context.add(coord);
+            populate_context.add(coord);
         }
-        context.populate_approach(&world, 7, &mut distance_map);
+        populate_context.populate_approach(&world, 7, &mut distance_map);
         assert_eq!(distance_map.distance(Coord::new(4, 6)), Some(4));
         assert_eq!(
             distance_map.direction_to_best_neighbour(Coord::new(4, 6)),
             Some(CardinalDirection::South)
         );
         for &coord in &goals {
-            context.add(coord);
+            populate_context.add(coord);
         }
-        context.populate_flee(&world, 10, &mut distance_map);
+        populate_context.populate_flee(&world, 10, &mut distance_map);
         assert_eq!(distance_map.distance(Coord::new(4, 6)), Some(6));
         assert_eq!(
             distance_map.direction_to_best_neighbour(Coord::new(1, 7)),
