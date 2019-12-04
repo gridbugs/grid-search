@@ -3,6 +3,7 @@
 members = [
     "cardinal-best",
     "cardinal-point-to-point",
+    "cardinal-distance-map",
     "cardinal-common",
     "maze",
 ]
