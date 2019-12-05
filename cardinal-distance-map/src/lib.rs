@@ -61,16 +61,36 @@ struct SearchInstance<'a, C: 'a + CanEnter> {
     search_state: SearchState,
 }
 
+struct Prune {
+    current_distance: Distance,
+    distance_to_goal: Distance,
+}
+
 pub trait CanEnter {
     fn can_enter(&self, coord: Coord) -> bool;
 }
 
 impl<'a, C: CanEnter> SearchInstance<'a, C> {
+    fn prune(&self, prune: Prune) -> bool {
+        let remaining_distance = self.max_distance - prune.current_distance;
+        if let Some(best_possible_distance_through_cell) = prune.distance_to_goal.checked_sub(remaining_distance) {
+            if best_possible_distance_through_cell > self.search_state.distance_to_goal {
+                return true;
+            }
+        }
+        false
+    }
     fn consider(&mut self, context: &mut SearchContext, step: Step, distance: Distance) {
         if let Some(Visit) = context.seen_set.try_visit_step(step, distance) {
             if self.can_enter.can_enter(step.to_coord) {
                 if let Some(distance_to_goal) = self.distance_map.distance(step.to_coord) {
                     if distance <= self.max_distance {
+                        if self.prune(Prune {
+                            current_distance: distance,
+                            distance_to_goal,
+                        }) {
+                            return;
+                        }
                         if distance_to_goal < self.search_state.distance_to_goal {
                             self.search_state.closest_coord = step.to_coord;
                             self.search_state.distance_to_goal = distance_to_goal;
@@ -316,6 +336,12 @@ impl SearchContext {
             instance.consider(self, step, 1);
         }
         while let Some(SearchNode { step, distance }) = self.queue.pop_front() {
+            if instance.prune(Prune {
+                current_distance: distance,
+                distance_to_goal: instance.distance_map.distance(step.to_coord).unwrap(),
+            }) {
+                continue;
+            }
             let next_distance = distance + 1;
             instance.consider(self, step.forward(), next_distance);
             instance.consider(self, step.left(), next_distance);
