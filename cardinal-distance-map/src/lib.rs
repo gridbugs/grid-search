@@ -54,8 +54,33 @@ struct SearchState {
     closest_coord: Coord,
 }
 
+struct SearchInstance<'a, C: 'a + CanEnter> {
+    distance_map: &'a DistanceMap,
+    can_enter: &'a C,
+    max_distance: Distance,
+    search_state: SearchState,
+}
+
 pub trait CanEnter {
     fn can_enter(&self, coord: Coord) -> bool;
+}
+
+impl<'a, C: CanEnter> SearchInstance<'a, C> {
+    fn consider(&mut self, context: &mut SearchContext, step: Step, distance: Distance) {
+        if let Some(Visit) = context.seen_set.try_visit_step(step, distance) {
+            if self.can_enter.can_enter(step.to_coord) {
+                if let Some(distance_to_goal) = self.distance_map.distance(step.to_coord) {
+                    if distance <= self.max_distance {
+                        if distance_to_goal < self.search_state.distance_to_goal {
+                            self.search_state.closest_coord = step.to_coord;
+                            self.search_state.distance_to_goal = distance_to_goal;
+                        }
+                        context.queue.push_back(SearchNode { step, distance });
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(feature = "serialize")]
@@ -260,30 +285,6 @@ impl SearchContext {
         }
     }
 
-    fn consider<C: CanEnter>(
-        &mut self,
-        can_enter: &C,
-        step: Step,
-        distance: Distance,
-        max_distance: Distance,
-        distance_map: &DistanceMap,
-        search_state: &mut SearchState,
-    ) {
-        if let Some(Visit) = self.seen_set.try_visit_step(step, distance) {
-            if can_enter.can_enter(step.to_coord) {
-                if let Some(distance_to_goal) = distance_map.distance(step.to_coord) {
-                    if distance <= max_distance {
-                        if distance_to_goal < search_state.distance_to_goal {
-                            search_state.closest_coord = step.to_coord;
-                            search_state.distance_to_goal = distance_to_goal;
-                        }
-                        self.queue.push_back(SearchNode { step, distance });
-                    }
-                }
-            }
-        }
-    }
-
     fn search_core<C: CanEnter>(
         &mut self,
         can_enter: &C,
@@ -291,7 +292,7 @@ impl SearchContext {
         max_distance: Distance,
         distance_map: &DistanceMap,
     ) -> Option<Coord> {
-        let mut search_state = if let Some(distance_to_goal) = distance_map.distance(start) {
+        let search_state = if let Some(distance_to_goal) = distance_map.distance(start) {
             SearchState {
                 distance_to_goal,
                 closest_coord: start,
@@ -301,41 +302,26 @@ impl SearchContext {
         };
         self.seen_set.init(start);
         self.queue.clear();
+        let mut instance = SearchInstance {
+            distance_map,
+            can_enter,
+            max_distance,
+            search_state,
+        };
         for &in_direction in &UNIT_COORDS {
             let step = Step {
                 to_coord: start + in_direction.to_coord(),
                 in_direction,
             };
-            self.consider(can_enter, step, 1, max_distance, distance_map, &mut search_state);
+            instance.consider(self, step, 1);
         }
         while let Some(SearchNode { step, distance }) = self.queue.pop_front() {
             let next_distance = distance + 1;
-            self.consider(
-                can_enter,
-                step.forward(),
-                next_distance,
-                max_distance,
-                distance_map,
-                &mut search_state,
-            );
-            self.consider(
-                can_enter,
-                step.left(),
-                next_distance,
-                max_distance,
-                distance_map,
-                &mut search_state,
-            );
-            self.consider(
-                can_enter,
-                step.right(),
-                next_distance,
-                max_distance,
-                distance_map,
-                &mut search_state,
-            );
+            instance.consider(self, step.forward(), next_distance);
+            instance.consider(self, step.left(), next_distance);
+            instance.consider(self, step.right(), next_distance);
         }
-        Some(search_state.closest_coord)
+        Some(instance.search_state.closest_coord)
     }
 
     pub fn search_path<C: CanEnter>(
