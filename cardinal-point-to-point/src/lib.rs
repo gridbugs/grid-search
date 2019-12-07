@@ -1,5 +1,5 @@
-use coord_2d::{Coord, Size};
-use direction::CardinalDirection;
+pub use coord_2d::{Coord, Size};
+pub use direction::CardinalDirection;
 pub use grid_search_cardinal_common::path::Path;
 use grid_search_cardinal_common::{
     coord::UNIT_COORDS,
