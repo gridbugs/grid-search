@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use grid_2d::{Coord, Grid, Size};
-use grid_search_cardinal_point_to_point::{expand, Context, PointToPointSearch};
+use grid_search_cardinal_point_to_point::{expand, CanEnter, Context};
 use grid_search_maze::{MazeCell, MazeGenerator};
 use rand::{Rng, SeedableRng};
 use rand_isaac::Isaac64Rng;
@@ -18,7 +18,7 @@ struct Search<'a> {
     world: &'a World,
 }
 
-impl<'a> PointToPointSearch for Search<'a> {
+impl<'a> CanEnter for Search<'a> {
     fn can_enter(&self, coord: Coord) -> bool {
         self.world.grid.get(coord).map(|cell| !cell.solid).unwrap_or(false)
     }
@@ -96,7 +96,7 @@ impl Benchmark {
     fn search<E: expand::Expand>(&mut self, expand: E) {
         let first = self
             .context
-            .point_to_point_search_first(expand, Search { world: &self.world }, self.start, self.goal)
+            .point_to_point_search_first(expand, &Search { world: &self.world }, self.start, self.goal)
             .unwrap();
         assert!(first.is_some());
         black_box(first);
