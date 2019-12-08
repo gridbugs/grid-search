@@ -2,6 +2,7 @@ pub use direction::CardinalDirection;
 use direction::CardinalDirections;
 use grid_2d::Grid;
 pub use grid_2d::{Coord, Size};
+pub use grid_search_cardinal_common::can_enter::CanEnter;
 use grid_search_cardinal_common::{
     coord::UNIT_COORDS,
     path::Path,
@@ -66,10 +67,6 @@ struct SearchInstance<'a, C: 'a + CanEnter> {
 struct Prune {
     current_distance: Distance,
     distance_to_goal: Distance,
-}
-
-pub trait CanEnter {
-    fn can_enter(&self, coord: Coord) -> bool;
 }
 
 impl<'a, C: CanEnter> SearchInstance<'a, C> {

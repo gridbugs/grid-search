@@ -1,6 +1,6 @@
 pub use coord_2d::{Coord, Size};
 pub use direction::CardinalDirection;
-pub use grid_search_cardinal_common::path::Path;
+pub use grid_search_cardinal_common::{can_enter::CanEnter, path::Path};
 use grid_search_cardinal_common::{
     coord::UNIT_COORDS,
     seen_set::{SeenSet, Visit},
@@ -42,10 +42,6 @@ impl Ord for Node {
             other => other,
         }
     }
-}
-
-pub trait PointToPointSearch {
-    fn can_enter(&self, coord: Coord) -> bool;
 }
 
 trait Profiler {
@@ -104,17 +100,17 @@ pub mod expand {
 pub struct NoPath;
 
 mod private_expand {
-    use super::{expand, Context, Coord, PointToPointSearch, Step};
+    use super::{expand, CanEnter, Context, Coord, Step};
     pub struct Stop;
     pub trait PrivateExpand {
-        fn consider<P: PointToPointSearch>(
+        fn consider<P: CanEnter>(
             context: &mut Context,
             point_to_point_search: &P,
             step: Step,
             cost: u32,
             goal: Coord,
         ) -> Option<Stop>;
-        fn expand<P: PointToPointSearch>(
+        fn expand<P: CanEnter>(
             context: &mut Context,
             point_to_point_search: &P,
             step: Step,
@@ -124,7 +120,7 @@ mod private_expand {
     }
 
     impl PrivateExpand for expand::JumpPoint {
-        fn consider<P: PointToPointSearch>(
+        fn consider<P: CanEnter>(
             context: &mut Context,
             point_to_point_search: &P,
             step: Step,
@@ -134,7 +130,7 @@ mod private_expand {
             context.consider_jps(point_to_point_search, step, cost, goal)
         }
 
-        fn expand<P: PointToPointSearch>(
+        fn expand<P: CanEnter>(
             context: &mut Context,
             point_to_point_search: &P,
             step: Step,
@@ -155,7 +151,7 @@ mod private_expand {
     }
 
     impl PrivateExpand for expand::Sequential {
-        fn consider<P: PointToPointSearch>(
+        fn consider<P: CanEnter>(
             context: &mut Context,
             point_to_point_search: &P,
             step: Step,
@@ -165,7 +161,7 @@ mod private_expand {
             context.consider(point_to_point_search, step, cost, goal)
         }
 
-        fn expand<P: PointToPointSearch>(
+        fn expand<P: CanEnter>(
             context: &mut Context,
             point_to_point_search: &P,
             step: Step,
@@ -197,13 +193,7 @@ impl Context {
         }
     }
 
-    fn consider<P: PointToPointSearch>(
-        &mut self,
-        point_to_point_search: &P,
-        step: Step,
-        cost: u32,
-        goal: Coord,
-    ) -> Option<Stop> {
+    fn consider<P: CanEnter>(&mut self, point_to_point_search: &P, step: Step, cost: u32, goal: Coord) -> Option<Stop> {
         let cost = cost + 1;
         if let Some(Visit) = self.seen_set.try_visit_step(step, cost) {
             if step.to_coord == goal {
@@ -223,7 +213,7 @@ impl Context {
         None
     }
 
-    fn consider_jps<P: PointToPointSearch>(
+    fn consider_jps<P: CanEnter>(
         &mut self,
         point_to_point_search: &P,
         mut step: Step,
@@ -315,7 +305,7 @@ impl Context {
         profiler: &mut P,
     ) -> Result<(), NoPath>
     where
-        S: PointToPointSearch,
+        S: CanEnter,
         E: Expand,
         P: Profiler,
     {
@@ -343,17 +333,17 @@ impl Context {
     pub fn point_to_point_search_path<S, E>(
         &mut self,
         expand: E,
-        point_to_point_search: S,
+        point_to_point_search: &S,
         start: Coord,
         goal: Coord,
         path: &mut Path,
     ) -> Result<(), NoPath>
     where
-        S: PointToPointSearch,
+        S: CanEnter,
         E: Expand,
     {
         let _ = expand;
-        self.point_to_point_search_core::<_, E, _>(&point_to_point_search, start, goal, &mut ())?;
+        self.point_to_point_search_core::<_, E, _>(point_to_point_search, start, goal, &mut ())?;
         self.seen_set.build_path_to(goal, path);
         Ok(())
     }
@@ -361,38 +351,38 @@ impl Context {
     pub fn point_to_point_search_first<S, E>(
         &mut self,
         expand: E,
-        point_to_point_search: S,
+        point_to_point_search: &S,
         start: Coord,
         goal: Coord,
     ) -> Result<Option<CardinalDirection>, NoPath>
     where
-        S: PointToPointSearch,
+        S: CanEnter,
         E: Expand,
     {
         let _ = expand;
-        self.point_to_point_search_core::<_, E, _>(&point_to_point_search, start, goal, &mut ())?;
+        self.point_to_point_search_core::<_, E, _>(point_to_point_search, start, goal, &mut ())?;
         Ok(self.seen_set.first_direction_towards(goal))
     }
 
     pub fn point_to_point_search_profile<S, E>(
         &mut self,
         expand: E,
-        point_to_point_search: S,
+        point_to_point_search: &S,
         start: Coord,
         goal: Coord,
     ) -> (Profile, Result<(), NoPath>)
     where
-        S: PointToPointSearch,
+        S: CanEnter,
         E: Expand,
     {
         let _ = expand;
         let mut profile = Profile::default();
-        let result = self.point_to_point_search_core::<_, E, _>(&point_to_point_search, start, goal, &mut profile);
+        let result = self.point_to_point_search_core::<_, E, _>(point_to_point_search, start, goal, &mut profile);
         (profile, result)
     }
 }
 
-fn has_forced_neighbour<P: PointToPointSearch>(point_to_point_search: &P, step: Step, goal: Coord) -> bool {
+fn has_forced_neighbour<P: CanEnter>(point_to_point_search: &P, step: Step, goal: Coord) -> bool {
     (!point_to_point_search.can_enter(step.to_coord + step.in_direction.left135())
         && (point_to_point_search.can_enter(step.to_coord + step.in_direction.left90().to_coord())
             || step.to_coord + step.in_direction.left90().to_coord() == goal))
@@ -483,7 +473,7 @@ mod test {
         grid: &'a Grid<Cell>,
     }
 
-    impl<'a> PointToPointSearch for Search<'a> {
+    impl<'a> CanEnter for Search<'a> {
         fn can_enter(&self, coord: Coord) -> bool {
             if let Some(cell) = self.grid.get(coord) {
                 match cell {
@@ -502,17 +492,17 @@ mod test {
         let mut path = Path::default();
         match len {
             Some(len) => {
-                ctx.point_to_point_search_path(expand::Sequential, Search { grid: &grid }, start, goal, &mut path)
+                ctx.point_to_point_search_path(expand::Sequential, &Search { grid: &grid }, start, goal, &mut path)
                     .unwrap();
                 assert_eq!(path.len(), len);
-                ctx.point_to_point_search_path(expand::JumpPoint, Search { grid: &grid }, start, goal, &mut path)
+                ctx.point_to_point_search_path(expand::JumpPoint, &Search { grid: &grid }, start, goal, &mut path)
                     .unwrap();
                 assert_eq!(path.len(), len);
             }
             None => {
-                ctx.point_to_point_search_path(expand::Sequential, Search { grid: &grid }, start, goal, &mut path)
+                ctx.point_to_point_search_path(expand::Sequential, &Search { grid: &grid }, start, goal, &mut path)
                     .unwrap_err();
-                ctx.point_to_point_search_path(expand::JumpPoint, Search { grid: &grid }, start, goal, &mut path)
+                ctx.point_to_point_search_path(expand::JumpPoint, &Search { grid: &grid }, start, goal, &mut path)
                     .unwrap_err();
             }
         }
@@ -798,10 +788,10 @@ mod test {
         for _ in 0..num_tests {
             let Test { grid, start, goal } = random_test(size, &mut rng);
             let seq_result =
-                ctx.point_to_point_search_path(expand::Sequential, Search { grid: &grid }, start, goal, &mut path);
+                ctx.point_to_point_search_path(expand::Sequential, &Search { grid: &grid }, start, goal, &mut path);
             let seq_len = path.len();
             let jps_result =
-                ctx.point_to_point_search_path(expand::JumpPoint, Search { grid: &grid }, start, goal, &mut path);
+                ctx.point_to_point_search_path(expand::JumpPoint, &Search { grid: &grid }, start, goal, &mut path);
             let jps_len = path.len();
             let test = Test { grid, start, goal };
             if seq_result != jps_result || seq_len != jps_len {
