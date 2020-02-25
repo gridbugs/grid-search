@@ -3,6 +3,10 @@ use direction::CardinalDirection;
 use grid_2d::Coord;
 use std::collections::{vec_deque, VecDeque};
 
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
+
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PathNode {
     pub to_coord: Coord,
@@ -23,6 +27,7 @@ impl<'a> Iterator for PathIter<'a> {
     }
 }
 
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Default)]
 pub struct Path {
     steps: VecDeque<Step>,

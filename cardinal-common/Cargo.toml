@@ -10,6 +10,10 @@ documentation = "https://docs.rs/grid_search_cardinal_common"
 readme = "README.md"
 edition = "2018"
 
+[features]
+serialize = ["serde", "grid_2d/serialize", "direction/serialize"]
+
 [dependencies]
 grid_2d = "0.14"
 direction = "0.17"
+serde = { version = "1.0", features = ["serde_derive"], optional = true }

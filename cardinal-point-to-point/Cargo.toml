@@ -11,7 +11,7 @@ readme = "README.md"
 edition = "2018"
 
 [features]
-serialize = ["serde", "coord_2d/serialize"]
+serialize = ["serde", "coord_2d/serialize", "grid_search_cardinal_common/serialize"]
 
 [dependencies]
 grid_search_cardinal_common = { version = "0.1", path = "../cardinal-common" }

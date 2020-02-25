@@ -1,6 +1,9 @@
 use crate::coord::{CardinalCoord, UnitCoord};
 use grid_2d::Coord;
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
 
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct Step {
     pub to_coord: Coord,

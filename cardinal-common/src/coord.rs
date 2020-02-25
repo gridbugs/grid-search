@@ -1,10 +1,14 @@
 use direction::CardinalDirection;
 use grid_2d::Coord;
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct CardinalCoord(Coord);
 
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct UnitCoord(CardinalCoord);
 
