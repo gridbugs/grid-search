@@ -54,7 +54,10 @@ impl Path {
     pub fn pop(&mut self) -> Option<PathNode> {
         self.steps.pop_front().map(|step| PathNode::from_step(&step))
     }
-    pub(crate) fn clear(&mut self) {
+    pub fn is_empty(&self) -> bool {
+        self.steps.is_empty()
+    }
+    pub fn clear(&mut self) {
         self.steps.clear();
     }
     pub(crate) fn prepend(&mut self, step: Step) {
