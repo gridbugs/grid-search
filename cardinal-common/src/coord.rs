@@ -95,6 +95,9 @@ impl UnitCoord {
     pub fn to_cardinal_direction(self) -> CardinalDirection {
         self.0.to_cardinal_direction()
     }
+    pub fn from_cardinal_direction(cardinal_direction: CardinalDirection) -> Self {
+        Self(CardinalCoord(cardinal_direction.coord()))
+    }
     pub fn scale(self, by: u32) -> CardinalCoord {
         assert_ne!(by, 0);
         CardinalCoord(self.to_coord() * by as i32)

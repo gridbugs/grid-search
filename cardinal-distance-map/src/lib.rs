@@ -2,12 +2,11 @@ pub use direction::CardinalDirection;
 use direction::CardinalDirections;
 use grid_2d::Grid;
 pub use grid_2d::{Coord, Size};
-pub use grid_search_cardinal_common::can_enter::CanEnter;
+pub use grid_search_cardinal_common::{can_enter::CanEnter, coord::UnitCoord, step::Step};
 use grid_search_cardinal_common::{
     coord::UNIT_COORDS,
     path::Path,
     seen_set::{SeenSet, Visit},
-    step::Step,
 };
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
@@ -81,7 +80,7 @@ impl<'a, C: CanEnter> SearchInstance<'a, C> {
     }
     fn consider(&mut self, context: &mut SearchContext, step: Step, distance: Distance) {
         if let Some(Visit) = context.seen_set.try_visit_step(step, distance) {
-            if self.can_enter.can_enter(step.to_coord) {
+            if self.can_enter.can_step(step) {
                 if let Some(distance_to_goal) = self.distance_map.distance(step.to_coord) {
                     if distance <= self.max_distance {
                         if self.prune(Prune {
@@ -206,7 +205,10 @@ impl PopulateContext {
             let neighbour_distance = distance + 1;
             for direction in CardinalDirections {
                 let neighbour_coord = coord + direction.coord();
-                if can_enter.can_enter(neighbour_coord) {
+                if can_enter.can_step(Step {
+                    to_coord: neighbour_coord,
+                    in_direction: UnitCoord::from_cardinal_direction(direction),
+                }) {
                     if let Some(cell) = distance_map.grid.get_mut(neighbour_coord) {
                         if cell.count != distance_map.count {
                             cell.count = distance_map.count;
@@ -250,7 +252,10 @@ impl PopulateContext {
             let neighbour_distance = distance + 1;
             for direction in CardinalDirections {
                 let neighbour_coord = coord + direction.coord();
-                if can_enter.can_enter(neighbour_coord) {
+                if can_enter.can_step(Step {
+                    to_coord: neighbour_coord,
+                    in_direction: UnitCoord::from_cardinal_direction(direction),
+                }) {
                     if let Some(cell) = distance_map.grid.get_mut(neighbour_coord) {
                         if cell.count != distance_map.count {
                             cell.count = distance_map.count;

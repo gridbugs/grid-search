@@ -1,10 +1,9 @@
 pub use coord_2d::{Coord, Size};
 pub use direction::CardinalDirection;
-pub use grid_search_cardinal_common::path::Path;
+pub use grid_search_cardinal_common::{coord::UnitCoord, path::Path, step::Step};
 use grid_search_cardinal_common::{
     coord::UNIT_COORDS,
     seen_set::{SeenSet, Visit},
-    step::Step,
 };
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
@@ -38,7 +37,10 @@ impl<'a> Deserialize<'a> for Context {
 
 pub trait BestSearch {
     fn is_at_max_depth(&self, depth: Depth) -> bool;
-    fn can_enter_updating_best(&mut self, coord: Coord) -> bool;
+    fn can_enter_initial_updating_best(&mut self, start_coord: Coord) -> bool;
+    fn can_step_updating_best(&mut self, step: Step) -> bool {
+        self.can_enter_initial_updating_best(step.to_coord)
+    }
     fn best_coord(&self) -> Option<Coord>;
 }
 
@@ -52,7 +54,7 @@ impl Context {
 
     fn consider<B: BestSearch>(&mut self, best_search: &mut B, step: Step, depth: Depth) {
         if let Some(Visit) = self.seen_set.try_visit_step(step, depth) {
-            if best_search.can_enter_updating_best(step.to_coord) {
+            if best_search.can_step_updating_best(step) {
                 if !best_search.is_at_max_depth(depth) {
                     self.queue.push_back(Node { step, depth });
                 }
@@ -63,7 +65,7 @@ impl Context {
     fn best_search_core<B: BestSearch>(&mut self, best_search: &mut B, start: Coord) {
         self.seen_set.init(start);
         self.queue.clear();
-        if !best_search.can_enter_updating_best(start) {
+        if !best_search.can_enter_initial_updating_best(start) {
             return;
         }
         if best_search.is_at_max_depth(0) {
@@ -187,7 +189,7 @@ mod test {
         fn is_at_max_depth(&self, depth: Depth) -> bool {
             depth >= self.max_depth
         }
-        fn can_enter_updating_best(&mut self, coord: Coord) -> bool {
+        fn can_enter_initial_updating_best(&mut self, coord: Coord) -> bool {
             if let Some(&Cell::Traversable(score)) = self.world.get(coord) {
                 if self.best_coord.is_none() || score > self.best_score {
                     self.best_score = score;

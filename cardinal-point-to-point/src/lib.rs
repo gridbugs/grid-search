@@ -1,10 +1,10 @@
 pub use coord_2d::{Coord, Size};
 pub use direction::CardinalDirection;
-pub use grid_search_cardinal_common::{can_enter::CanEnter, path::Path};
+pub use grid_search_cardinal_common::{can_enter::CanEnter, coord::UnitCoord, path::Path, step::Step};
 use grid_search_cardinal_common::{
     coord::UNIT_COORDS,
     seen_set::{SeenSet, Visit},
-    step::{Jump, Step},
+    step::Jump,
 };
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
@@ -199,7 +199,7 @@ impl Context {
             if step.to_coord == goal {
                 return Some(Stop);
             }
-            if point_to_point_search.can_enter(step.to_coord) {
+            if point_to_point_search.can_step(step) {
                 let heuristic = step.to_coord.manhattan_distance(goal);
                 let cost_plus_heuristic = cost + heuristic;
                 let node = Node {
@@ -230,7 +230,7 @@ impl Context {
                 self.seen_set.try_visit_jump(jump, cost + jump_cost);
                 return Some(Stop);
             }
-            if !point_to_point_search.can_enter(step.to_coord) {
+            if !point_to_point_search.can_step(step) {
                 return None;
             }
             if has_forced_neighbour(point_to_point_search, step, goal) {
@@ -254,7 +254,7 @@ impl Context {
                         .try_visit_jump(jump_to_goal, cost + jump_cost + side_jump_cost);
                     return Some(Stop);
                 }
-                if !point_to_point_search.can_enter(side_step.to_coord) {
+                if !point_to_point_search.can_step(side_step) {
                     break 'inner;
                 }
                 if has_forced_neighbour(point_to_point_search, side_step, goal) {
@@ -382,12 +382,19 @@ impl Context {
     }
 }
 
+fn step_from(from_coord: Coord, in_direction: UnitCoord) -> Step {
+    Step {
+        to_coord: from_coord + in_direction.to_coord(),
+        in_direction,
+    }
+}
+
 fn has_forced_neighbour<P: CanEnter>(point_to_point_search: &P, step: Step, goal: Coord) -> bool {
     (!point_to_point_search.can_enter(step.to_coord + step.in_direction.left135())
-        && (point_to_point_search.can_enter(step.to_coord + step.in_direction.left90().to_coord())
+        && (point_to_point_search.can_step(step_from(step.to_coord, step.in_direction.left90()))
             || step.to_coord + step.in_direction.left90().to_coord() == goal))
         || (!point_to_point_search.can_enter(step.to_coord + step.in_direction.right135())
-            && (point_to_point_search.can_enter(step.to_coord + step.in_direction.right90().to_coord())
+            && (point_to_point_search.can_step(step_from(step.to_coord, step.in_direction.right90()))
                 || step.to_coord + step.in_direction.right90().to_coord() == goal))
 }
 
