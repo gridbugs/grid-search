@@ -38,6 +38,12 @@ impl Step {
             in_direction: self.in_direction.scale(by),
         }
     }
+    pub fn to_coord(&self) -> Coord {
+        self.to_coord
+    }
+    pub fn from_coord(&self) -> Coord {
+        self.to_coord - self.in_direction.to_coord()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
