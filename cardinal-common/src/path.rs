@@ -37,7 +37,7 @@ impl<'a> Iterator for PathIter<'a> {
 }
 
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Path {
     steps: VecDeque<Step>,
 }
