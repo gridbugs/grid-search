@@ -1,7 +1,7 @@
 [package]
 name = "grid_search_cardinal_point_to_point"
 description = "Search algorithm for finding the shortest path between two points in a uniform-cost cardinal grid"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Stephen Sherratt <stephen@sherra.tt>"]
 license = "MIT"
 homepage = "https://github.com/stevebob/grid-search.git"
@@ -14,7 +14,7 @@ edition = "2018"
 serialize = ["serde", "coord_2d/serialize", "grid_search_cardinal_common/serialize"]
 
 [dependencies]
-grid_search_cardinal_common = { version = "0.1", path = "../cardinal-common" }
+grid_search_cardinal_common = { version = "0.2", path = "../cardinal-common" }
 coord_2d = "0.2"
 direction = "0.17"
 serde = { version = "1.0", features = ["serde_derive"], optional = true }
