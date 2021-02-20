@@ -25,7 +25,7 @@ coord_2d = { version = "0.2", features = ["rand"] }
 criterion = "0.3"
 grid_search_maze = { version = "0.1", path = "../maze" }
 rand = "0.7"
-rand_isaac = "0.2"
+rand_isaac = "0.3"
 
 [[bench]]
 name = "bench"

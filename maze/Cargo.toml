@@ -13,4 +13,4 @@ edition = "2018"
 [dependencies]
 grid_2d = "0.14"
 rand = "0.7"
-rand_isaac = { version = "0.2", features = ["serde1"] }
+rand_isaac = { version = "0.3", features = ["serde1"] }
