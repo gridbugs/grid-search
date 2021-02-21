@@ -153,7 +153,7 @@ impl MazeGenerator {
         if self.walls_to_visit.is_empty() {
             None
         } else {
-            let index = rng.gen_range(0, self.walls_to_visit.len());
+            let index = rng.gen_range(0..self.walls_to_visit.len());
             Some(self.walls_to_visit.swap_remove(index))
         }
     }
