@@ -1,7 +1,7 @@
 [package]
 name = "grid_search_maze"
 description = "Maze generator for testing and benchmarking grid-searching algorithms"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Stephen Sherratt <stephen@sherra.tt>"]
 license = "MIT"
 homepage = "https://github.com/gridbugs/grid-search.git"
