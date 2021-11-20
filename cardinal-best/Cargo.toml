@@ -8,7 +8,7 @@ homepage = "https://github.com/gridbugs/grid-search.git"
 repository = "https://github.com/gridbugs/grid-search.git"
 documentation = "https://docs.rs/grid_search_cardinal_best"
 readme = "README.md"
-edition = "2018"
+edition = "2021"
 
 [features]
 serialize = ["serde", "coord_2d/serialize", "grid_search_cardinal_common/serialize"]

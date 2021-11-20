@@ -8,7 +8,7 @@ homepage = "https://github.com/gridbugs/grid-search.git"
 repository = "https://github.com/gridbugs/grid-search.git"
 documentation = "https://docs.rs/grid_search_maze"
 readme = "README.md"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 grid_2d = "0.15"
