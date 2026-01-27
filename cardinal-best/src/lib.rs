@@ -1,10 +1,10 @@
-pub use coord_2d::{Coord, Size};
+pub use coord_2d::{ICoord, UCoord};
 pub use direction::CardinalDirection;
-pub use grid_search_cardinal_common::{coord::UnitCoord, path::Path, step::Step};
 use grid_search_cardinal_common::{
     coord::UNIT_COORDS,
     seen_set::{SeenSet, Visit},
 };
+pub use grid_search_cardinal_common::{coord::UnitCoord, path::Path, step::Step};
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -37,15 +37,15 @@ impl<'a> Deserialize<'a> for Context {
 
 pub trait BestSearch {
     fn is_at_max_depth(&self, depth: Depth) -> bool;
-    fn can_enter_initial_updating_best(&mut self, start_coord: Coord) -> bool;
+    fn can_enter_initial_updating_best(&mut self, start_coord: ICoord) -> bool;
     fn can_step_updating_best(&mut self, step: Step) -> bool {
         self.can_enter_initial_updating_best(step.to_coord)
     }
-    fn best_coord(&self) -> Option<Coord>;
+    fn best_coord(&self) -> Option<ICoord>;
 }
 
 impl Context {
-    pub fn new(size: Size) -> Self {
+    pub fn new(size: UCoord) -> Self {
         Self {
             seen_set: SeenSet::new(size),
             queue: VecDeque::new(),
@@ -60,7 +60,7 @@ impl Context {
         }
     }
 
-    fn best_search_core<B: BestSearch>(&mut self, best_search: &mut B, start: Coord) {
+    fn best_search_core<B: BestSearch>(&mut self, best_search: &mut B, start: ICoord) {
         self.seen_set.init(start);
         self.queue.clear();
         if !best_search.can_enter_initial_updating_best(start) {
@@ -87,13 +87,13 @@ impl Context {
         }
     }
 
-    pub fn best_search_path<B: BestSearch>(&mut self, mut best_search: B, start: Coord, path: &mut Path) {
+    pub fn best_search_path<B: BestSearch>(&mut self, mut best_search: B, start: ICoord, path: &mut Path) {
         self.best_search_core(&mut best_search, start);
         let end = best_search.best_coord().unwrap_or(start);
         self.seen_set.build_path_to(end, path);
     }
 
-    pub fn best_search_first<B: BestSearch>(&mut self, mut best_search: B, start: Coord) -> Option<CardinalDirection> {
+    pub fn best_search_first<B: BestSearch>(&mut self, mut best_search: B, start: ICoord) -> Option<CardinalDirection> {
         self.best_search_core(&mut best_search, start);
         let end = best_search.best_coord().unwrap_or(start);
         self.seen_set.first_direction_towards(end)
@@ -115,18 +115,18 @@ mod test {
 
     struct Test {
         grid: Grid<Cell>,
-        start: Coord,
+        start: ICoord,
     }
 
     fn str_slice_to_test(str_slice: &[&str]) -> Test {
         let width = str_slice[0].len() as u32;
         let height = str_slice.len() as u32;
-        let size = Size::new(width, height);
+        let size = UCoord::new(width, height);
         let mut grid = Grid::new_clone(size, Cell::Solid);
         let mut start = None;
         for (y, line) in str_slice.iter().enumerate() {
             for (x, ch) in line.chars().enumerate() {
-                let coord = Coord::new(x as i32, y as i32);
+                let coord = ICoord::new(x as i32, y as i32);
                 let cell = match ch {
                     '.' => Cell::Traversable(0),
                     '@' => {
@@ -147,17 +147,17 @@ mod test {
         }
     }
 
-    fn random_test<R: Rng>(size: Size, rng: &mut R) -> Test {
+    fn random_test<R: Rng>(size: UCoord, rng: &mut R) -> Test {
         let mut grid = Grid::new_fn(size, |_| {
-            let score = rng.gen();
+            let score = rng.random();
             Cell::Traversable(score)
         });
         let num_solid = size.count() / 4;
         for _ in 0..num_solid {
-            let coord = Coord::random_within(size, rng);
+            let coord = ICoord::random_within(size, rng);
             *grid.get_checked_mut(coord) = Cell::Solid;
         }
-        let start = Coord::new(0, 0);
+        let start = ICoord::new(0, 0);
         Test { grid, start }
     }
 
@@ -170,7 +170,7 @@ mod test {
     struct ConstrainedSearch<'a> {
         max_depth: Depth,
         world: &'a Grid<Cell>,
-        best_coord: Option<Coord>,
+        best_coord: Option<ICoord>,
         best_score: u8,
     }
     impl<'a> ConstrainedSearch<'a> {
@@ -187,7 +187,7 @@ mod test {
         fn is_at_max_depth(&self, depth: Depth) -> bool {
             depth >= self.max_depth
         }
-        fn can_enter_initial_updating_best(&mut self, coord: Coord) -> bool {
+        fn can_enter_initial_updating_best(&mut self, coord: ICoord) -> bool {
             if let Some(&Cell::Traversable(score)) = self.world.get(coord) {
                 if self.best_coord.is_none() || score > self.best_score {
                     self.best_score = score;
@@ -198,7 +198,7 @@ mod test {
                 false
             }
         }
-        fn best_coord(&self) -> Option<Coord> {
+        fn best_coord(&self) -> Option<ICoord> {
             self.best_coord
         }
     }
@@ -311,7 +311,7 @@ mod test {
     fn grid_random() {
         let mut rng = Isaac64Rng::seed_from_u64(0);
         let num_tests = 1000;
-        let size = Size::new(10, 10);
+        let size = UCoord::new(10, 10);
         let mut ctx = Context::new(size);
         let mut path = Path::default();
         for _ in 0..num_tests {

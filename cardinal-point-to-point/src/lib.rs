@@ -1,4 +1,4 @@
-pub use coord_2d::{Coord, Size};
+pub use coord_2d::{ICoord, UCoord};
 pub use direction::CardinalDirection;
 pub use grid_search_cardinal_common::{can_enter::CanEnter, coord::UnitCoord, path::Path, step::Step};
 use grid_search_cardinal_common::{
@@ -97,7 +97,7 @@ pub mod expand {
 pub struct NoPath;
 
 mod private_expand {
-    use super::{expand, CanEnter, Context, Coord, Step};
+    use super::{CanEnter, Context, ICoord, Step, expand};
     pub struct Stop;
     pub trait PrivateExpand {
         fn consider<P: CanEnter>(
@@ -105,14 +105,14 @@ mod private_expand {
             point_to_point_search: &P,
             step: Step,
             cost: u32,
-            goal: Coord,
+            goal: ICoord,
         ) -> Option<Stop>;
         fn expand<P: CanEnter>(
             context: &mut Context,
             point_to_point_search: &P,
             step: Step,
             cost: u32,
-            goal: Coord,
+            goal: ICoord,
         ) -> Option<Stop>;
     }
 
@@ -122,7 +122,7 @@ mod private_expand {
             point_to_point_search: &P,
             step: Step,
             cost: u32,
-            goal: Coord,
+            goal: ICoord,
         ) -> Option<Stop> {
             context.consider_jps(point_to_point_search, step, cost, goal)
         }
@@ -132,7 +132,7 @@ mod private_expand {
             point_to_point_search: &P,
             step: Step,
             cost: u32,
-            goal: Coord,
+            goal: ICoord,
         ) -> Option<Stop> {
             if let Some(Stop) = Self::consider(context, point_to_point_search, step.forward(), cost, goal) {
                 return Some(Stop);
@@ -153,7 +153,7 @@ mod private_expand {
             point_to_point_search: &P,
             step: Step,
             cost: u32,
-            goal: Coord,
+            goal: ICoord,
         ) -> Option<Stop> {
             context.consider(point_to_point_search, step, cost, goal)
         }
@@ -163,7 +163,7 @@ mod private_expand {
             point_to_point_search: &P,
             step: Step,
             cost: u32,
-            goal: Coord,
+            goal: ICoord,
         ) -> Option<Stop> {
             if let Some(Stop) = Self::consider(context, point_to_point_search, step.forward(), cost, goal) {
                 return Some(Stop);
@@ -183,14 +183,20 @@ use expand::Expand;
 use private_expand::Stop;
 
 impl Context {
-    pub fn new(size: Size) -> Self {
+    pub fn new(size: UCoord) -> Self {
         Self {
             seen_set: SeenSet::new(size),
             priority_queue: BinaryHeap::new(),
         }
     }
 
-    fn consider<P: CanEnter>(&mut self, point_to_point_search: &P, step: Step, cost: u32, goal: Coord) -> Option<Stop> {
+    fn consider<P: CanEnter>(
+        &mut self,
+        point_to_point_search: &P,
+        step: Step,
+        cost: u32,
+        goal: ICoord,
+    ) -> Option<Stop> {
         let cost = cost + 1;
         if let Some(Visit) = self.seen_set.try_visit_step(step, cost) {
             if step.to_coord == goal {
@@ -215,7 +221,7 @@ impl Context {
         point_to_point_search: &P,
         mut step: Step,
         cost: u32,
-        goal: Coord,
+        goal: ICoord,
     ) -> Option<Stop> {
         let mut jump_cost = 1;
         'outer: loop {
@@ -297,8 +303,8 @@ impl Context {
     fn point_to_point_search_core<S, E, P>(
         &mut self,
         point_to_point_search: &S,
-        start: Coord,
-        goal: Coord,
+        start: ICoord,
+        goal: ICoord,
         profiler: &mut P,
     ) -> Result<(), NoPath>
     where
@@ -331,8 +337,8 @@ impl Context {
         &mut self,
         expand: E,
         point_to_point_search: &S,
-        start: Coord,
-        goal: Coord,
+        start: ICoord,
+        goal: ICoord,
         path: &mut Path,
     ) -> Result<(), NoPath>
     where
@@ -349,8 +355,8 @@ impl Context {
         &mut self,
         expand: E,
         point_to_point_search: &S,
-        start: Coord,
-        goal: Coord,
+        start: ICoord,
+        goal: ICoord,
     ) -> Result<Option<CardinalDirection>, NoPath>
     where
         S: CanEnter,
@@ -365,8 +371,8 @@ impl Context {
         &mut self,
         expand: E,
         point_to_point_search: &S,
-        start: Coord,
-        goal: Coord,
+        start: ICoord,
+        goal: ICoord,
     ) -> (Profile, Result<(), NoPath>)
     where
         S: CanEnter,
@@ -379,14 +385,14 @@ impl Context {
     }
 }
 
-fn step_from(from_coord: Coord, in_direction: UnitCoord) -> Step {
+fn step_from(from_coord: ICoord, in_direction: UnitCoord) -> Step {
     Step {
         to_coord: from_coord + in_direction.to_coord(),
         in_direction,
     }
 }
 
-fn has_forced_neighbour<P: CanEnter>(point_to_point_search: &P, step: Step, goal: Coord) -> bool {
+fn has_forced_neighbour<P: CanEnter>(point_to_point_search: &P, step: Step, goal: ICoord) -> bool {
     (!point_to_point_search.can_enter(step.to_coord + step.in_direction.left135())
         && (point_to_point_search.can_step(step_from(step.to_coord, step.in_direction.left90()))
             || step.to_coord + step.in_direction.left90().to_coord() == goal))
@@ -410,8 +416,8 @@ mod test {
 
     struct Test {
         grid: Grid<Cell>,
-        start: Coord,
-        goal: Coord,
+        start: ICoord,
+        goal: ICoord,
     }
 
     fn print_test(test: &Test) {
@@ -431,13 +437,13 @@ mod test {
     fn str_slice_to_test(str_slice: &[&str]) -> Test {
         let width = str_slice[0].len() as u32;
         let height = str_slice.len() as u32;
-        let size = Size::new(width, height);
+        let size = UCoord::new(width, height);
         let mut grid = Grid::new_clone(size, Cell::Solid);
         let mut start = None;
         let mut goal = None;
         for (y, line) in str_slice.iter().enumerate() {
             for (x, ch) in line.chars().enumerate() {
-                let coord = Coord::new(x as i32, y as i32);
+                let coord = ICoord::new(x as i32, y as i32);
                 let cell = match ch {
                     '.' => Cell::Traversable,
                     '@' => {
@@ -461,15 +467,15 @@ mod test {
         }
     }
 
-    fn random_test<R: Rng>(size: Size, rng: &mut R) -> Test {
+    fn random_test<R: Rng>(size: UCoord, rng: &mut R) -> Test {
         let mut grid = Grid::new_clone(size, Cell::Traversable);
         let num_solid = size.count() / 4;
         for _ in 0..num_solid {
-            let coord = Coord::random_within(size, rng);
+            let coord = ICoord::random_within(size, rng);
             *grid.get_checked_mut(coord) = Cell::Solid;
         }
-        let start = Coord::new(0, 0);
-        let goal = size.to_coord().unwrap() - Coord::new(1, 1);
+        let start = ICoord::new(0, 0);
+        let goal = size.to_coord().unwrap() - ICoord::new(1, 1);
         Test { grid, start, goal }
     }
 
@@ -478,7 +484,7 @@ mod test {
     }
 
     impl<'a> CanEnter for Search<'a> {
-        fn can_enter(&self, coord: Coord) -> bool {
+        fn can_enter(&self, coord: ICoord) -> bool {
             if let Some(cell) = self.grid.get(coord) {
                 match cell {
                     Cell::Solid => false,
@@ -786,7 +792,7 @@ mod test {
     fn grid_random() {
         let mut rng = Isaac64Rng::seed_from_u64(0);
         let num_tests = 1000;
-        let size = Size::new(10, 10);
+        let size = UCoord::new(10, 10);
         let mut ctx = Context::new(size);
         let mut path = Path::default();
         for _ in 0..num_tests {

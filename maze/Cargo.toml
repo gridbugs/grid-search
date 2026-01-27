@@ -1,16 +1,16 @@
 [package]
 name = "grid_search_maze"
 description = "Maze generator for testing and benchmarking grid-searching algorithms"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Stephen Sherratt <stephen@sherra.tt>"]
 license = "MIT"
 homepage = "https://github.com/gridbugs/grid-search.git"
 repository = "https://github.com/gridbugs/grid-search.git"
 documentation = "https://docs.rs/grid_search_maze"
 readme = "README.md"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-grid_2d = "0.15"
-rand = "0.8"
-rand_isaac = { version = "0.3", features = ["serde1"] }
+grid_2d = "0.16"
+rand = "0.9"
+rand_isaac = { version = "0.4", features = ["serde"] }

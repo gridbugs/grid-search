@@ -2,7 +2,7 @@ use crate::coord::CardinalCoord;
 use crate::path::Path;
 use crate::step::{Jump, Step};
 use direction::CardinalDirection;
-use grid_2d::{Coord, Grid, Size};
+use grid_2d::{Grid, ICoord, UCoord};
 
 #[derive(Debug, Clone)]
 struct SeenCell {
@@ -20,7 +20,7 @@ pub struct SeenSet {
 pub struct Visit;
 
 impl SeenSet {
-    pub fn new(size: Size) -> Self {
+    pub fn new(size: UCoord) -> Self {
         Self {
             count: 1,
             grid: Grid::new_fn(size, |_| SeenCell {
@@ -31,11 +31,11 @@ impl SeenSet {
         }
     }
 
-    pub fn size(&self) -> Size {
+    pub fn size(&self) -> UCoord {
         self.grid.size()
     }
 
-    pub fn build_path_to(&self, end: Coord, path: &mut Path) {
+    pub fn build_path_to(&self, end: ICoord, path: &mut Path) {
         let mut cell = self.grid.get(end).expect("path end out of bounds");
         debug_assert_eq!(cell.count, self.count, "path end not visited in latest search");
         let mut coord = end;
@@ -58,7 +58,7 @@ impl SeenSet {
         }
     }
 
-    pub fn first_direction_towards(&self, end: Coord) -> Option<CardinalDirection> {
+    pub fn first_direction_towards(&self, end: ICoord) -> Option<CardinalDirection> {
         let mut cell = self.grid.get(end).expect("path end out of bounds");
         debug_assert_eq!(cell.count, self.count, "path end not visited in latest search");
         let mut coord = end;
@@ -75,14 +75,14 @@ impl SeenSet {
         ret.map(|in_direction| in_direction.to_cardinal_direction())
     }
 
-    pub fn init(&mut self, start: Coord) {
+    pub fn init(&mut self, start: ICoord) {
         self.count += 1;
         let cell = self.grid.get_checked_mut(start);
         cell.count = self.count;
         cell.in_direction = None;
     }
 
-    fn try_visit(&mut self, to_coord: Coord, in_direction: CardinalCoord, cost: u32) -> Option<Visit> {
+    fn try_visit(&mut self, to_coord: ICoord, in_direction: CardinalCoord, cost: u32) -> Option<Visit> {
         if let Some(cell) = self.grid.get_mut(to_coord) {
             if cell.count != self.count || cost < cell.cost {
                 cell.count = self.count;

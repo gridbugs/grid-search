@@ -1,12 +1,12 @@
 use crate::coord::{CardinalCoord, UnitCoord};
-use grid_2d::Coord;
+use grid_2d::ICoord;
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct Step {
-    pub to_coord: Coord,
+    pub to_coord: ICoord,
     pub in_direction: UnitCoord,
 }
 
@@ -38,17 +38,17 @@ impl Step {
             in_direction: self.in_direction.scale(by),
         }
     }
-    pub fn to_coord(&self) -> Coord {
+    pub fn to_coord(&self) -> ICoord {
         self.to_coord
     }
-    pub fn from_coord(&self) -> Coord {
+    pub fn from_coord(&self) -> ICoord {
         self.to_coord - self.in_direction.to_coord()
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Jump {
-    pub to_coord: Coord,
+    pub to_coord: ICoord,
     pub in_direction: CardinalCoord,
 }
 

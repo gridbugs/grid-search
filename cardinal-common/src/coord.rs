@@ -1,38 +1,34 @@
 use direction::CardinalDirection;
-use grid_2d::Coord;
+use grid_2d::ICoord;
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug)]
-pub struct CardinalCoord(Coord);
+pub struct CardinalCoord(ICoord);
 
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct UnitCoord(CardinalCoord);
 
 pub const UNIT_COORDS: [UnitCoord; 4] = [
-    UnitCoord(CardinalCoord(Coord::new(1, 0))),
-    UnitCoord(CardinalCoord(Coord::new(0, -1))),
-    UnitCoord(CardinalCoord(Coord::new(-1, 0))),
-    UnitCoord(CardinalCoord(Coord::new(0, 1))),
+    UnitCoord(CardinalCoord(ICoord::new(1, 0))),
+    UnitCoord(CardinalCoord(ICoord::new(0, -1))),
+    UnitCoord(CardinalCoord(ICoord::new(-1, 0))),
+    UnitCoord(CardinalCoord(ICoord::new(0, 1))),
 ];
 
-fn is_cardinal(coord: Coord) -> bool {
+fn is_cardinal(coord: ICoord) -> bool {
     (coord.x == 0 && coord.y != 0) || (coord.y == 0 && coord.x != 0)
 }
 
 impl CardinalCoord {
-    pub const fn to_coord(self) -> Coord {
+    pub const fn to_coord(self) -> ICoord {
         self.0
     }
-    pub fn from_coord(coord: Coord) -> Option<Self> {
-        if is_cardinal(coord) {
-            Some(Self(coord))
-        } else {
-            None
-        }
+    pub fn from_coord(coord: ICoord) -> Option<Self> {
+        if is_cardinal(coord) { Some(Self(coord)) } else { None }
     }
     pub const fn left90(self) -> Self {
         Self(self.0.left90())
@@ -40,10 +36,10 @@ impl CardinalCoord {
     pub const fn right90(self) -> Self {
         Self(self.0.right90())
     }
-    pub const fn left135(self) -> Coord {
+    pub const fn left135(self) -> ICoord {
         self.0.cardinal_left135()
     }
-    pub const fn right135(self) -> Coord {
+    pub const fn right135(self) -> ICoord {
         self.0.cardinal_right135()
     }
     pub fn to_cardinal_direction(self) -> CardinalDirection {
@@ -64,11 +60,11 @@ impl CardinalCoord {
         match self.0.x.cmp(&0) {
             Ordering::Equal => match self.0.y.cmp(&0) {
                 Ordering::Equal => unreachable!(),
-                Ordering::Less => UnitCoord(Self(Coord::new(0, -1))),
-                Ordering::Greater => UnitCoord(Self(Coord::new(0, 1))),
+                Ordering::Less => UnitCoord(Self(ICoord::new(0, -1))),
+                Ordering::Greater => UnitCoord(Self(ICoord::new(0, 1))),
             },
-            Ordering::Less => UnitCoord(Self(Coord::new(-1, 0))),
-            Ordering::Greater => UnitCoord(Self(Coord::new(1, 0))),
+            Ordering::Less => UnitCoord(Self(ICoord::new(-1, 0))),
+            Ordering::Greater => UnitCoord(Self(ICoord::new(1, 0))),
         }
     }
 }
@@ -80,13 +76,13 @@ impl UnitCoord {
     pub const fn right90(self) -> Self {
         Self(self.0.right90())
     }
-    pub const fn left135(self) -> Coord {
+    pub const fn left135(self) -> ICoord {
         self.0.left135()
     }
-    pub const fn right135(self) -> Coord {
+    pub const fn right135(self) -> ICoord {
         self.0.right135()
     }
-    pub const fn to_coord(self) -> Coord {
+    pub const fn to_coord(self) -> ICoord {
         self.0.to_coord()
     }
     pub const fn to_cardinal_coord(self) -> CardinalCoord {

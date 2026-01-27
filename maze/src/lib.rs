@@ -1,4 +1,4 @@
-pub use grid_2d::{Coord, Grid, Size};
+pub use grid_2d::{Grid, ICoord, UCoord};
 use rand::Rng;
 
 #[derive(Debug, Clone, Copy)]
@@ -9,12 +9,12 @@ enum WallDirection {
 
 #[derive(Debug, Clone, Copy)]
 struct Wall {
-    coord: Coord,
+    coord: ICoord,
     direction: WallDirection,
 }
 
 impl Wall {
-    fn walls_around(coord: Coord) -> [Wall; 4] {
+    fn walls_around(coord: ICoord) -> [Wall; 4] {
         [
             Wall {
                 coord,
@@ -25,21 +25,21 @@ impl Wall {
                 direction: WallDirection::South,
             },
             Wall {
-                coord: coord - Coord::new(1, 0),
+                coord: coord - ICoord::new(1, 0),
                 direction: WallDirection::East,
             },
             Wall {
-                coord: coord - Coord::new(0, 1),
+                coord: coord - ICoord::new(0, 1),
                 direction: WallDirection::South,
             },
         ]
     }
-    fn coords(&self) -> [Coord; 2] {
+    fn coords(&self) -> [ICoord; 2] {
         [
             self.coord,
             match self.direction {
-                WallDirection::East => self.coord + Coord::new(1, 0),
-                WallDirection::South => self.coord + Coord::new(0, 1),
+                WallDirection::East => self.coord + ICoord::new(1, 0),
+                WallDirection::South => self.coord + ICoord::new(0, 1),
             },
         ]
     }
@@ -93,7 +93,7 @@ pub struct MazeGenerator {
 }
 
 impl MazeGenerator {
-    pub fn new(size: Size) -> Self {
+    pub fn new(size: UCoord) -> Self {
         Self {
             grid: Grid::new_default(size),
             walls_to_visit: Vec::new(),
@@ -110,7 +110,7 @@ impl MazeGenerator {
         }
     }
 
-    fn add_cell_at(&mut self, coord: Coord) {
+    fn add_cell_at(&mut self, coord: ICoord) {
         if let Some(cell) = self.grid.get_mut(coord) {
             if !cell.in_maze {
                 cell.in_maze = true;
@@ -151,13 +151,13 @@ impl MazeGenerator {
         if self.walls_to_visit.is_empty() {
             None
         } else {
-            let index = rng.gen_range(0..self.walls_to_visit.len());
+            let index = rng.random_range(0..self.walls_to_visit.len());
             Some(self.walls_to_visit.swap_remove(index))
         }
     }
 
     fn build_maze(&self) -> Grid<MazeCell> {
-        let size = self.grid.size() * 2 - Size::new(1, 1);
+        let size = self.grid.size() * 2 - UCoord::new(1, 1);
         let mut maze = Grid::new_clone(size, MazeCell::Wall);
         for (coord, cell) in self.grid.enumerate() {
             let maze_cell_coord = coord * 2;
@@ -167,13 +167,13 @@ impl MazeGenerator {
                 }
             }
             if cell.passages.east {
-                let coord = maze_cell_coord + Coord::new(1, 0);
+                let coord = maze_cell_coord + ICoord::new(1, 0);
                 if let Some(maze_cell) = maze.get_mut(coord) {
                     *maze_cell = MazeCell::Passage;
                 }
             }
             if cell.passages.south {
-                let coord = maze_cell_coord + Coord::new(0, 1);
+                let coord = maze_cell_coord + ICoord::new(0, 1);
                 if let Some(maze_cell) = maze.get_mut(coord) {
                     *maze_cell = MazeCell::Passage;
                 }
@@ -182,7 +182,7 @@ impl MazeGenerator {
         maze
     }
 
-    pub fn generate<R: Rng>(&mut self, start: Coord, rng: &mut R) -> Grid<MazeCell> {
+    pub fn generate<R: Rng>(&mut self, start: ICoord, rng: &mut R) -> Grid<MazeCell> {
         for cell in self.grid.iter_mut() {
             *cell = GenerationCell::default();
         }

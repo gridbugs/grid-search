@@ -1,12 +1,12 @@
-use grid_search_maze::{Coord, MazeCell, MazeGenerator, Size};
+use grid_search_maze::{ICoord, MazeCell, MazeGenerator, UCoord};
 use rand::SeedableRng;
 use rand_isaac::Isaac64Rng;
 
 fn main() {
-    let size = Size::new(100, 100);
+    let size = UCoord::new(100, 100);
     let mut rng = Isaac64Rng::seed_from_u64(0);
     let mut generator = MazeGenerator::new(size);
-    let maze = generator.generate(Coord::new(1, 1), &mut rng);
+    let maze = generator.generate(ICoord::new(1, 1), &mut rng);
     for row in maze.rows() {
         for cell in row {
             let ch = match cell {

@@ -1,7 +1,7 @@
 use crate::step::Step;
 use direction::CardinalDirection;
-use grid_2d::Coord;
-use std::collections::{vec_deque, VecDeque};
+use grid_2d::ICoord;
+use std::collections::{VecDeque, vec_deque};
 
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PathNode {
-    pub to_coord: Coord,
+    pub to_coord: ICoord,
     pub in_direction: CardinalDirection,
 }
 
