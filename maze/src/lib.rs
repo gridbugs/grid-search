@@ -111,14 +111,13 @@ impl MazeGenerator {
     }
 
     fn add_cell_at(&mut self, coord: ICoord) {
-        if let Some(cell) = self.grid.get_mut(coord) {
-            if !cell.in_maze {
+        if let Some(cell) = self.grid.get_mut(coord)
+            && !cell.in_maze {
                 cell.in_maze = true;
                 for &wall in Wall::walls_around(coord).iter() {
                     self.add_wall(wall);
                 }
             }
-        }
     }
 
     fn add_passage(&mut self, wall: Wall) {
@@ -161,11 +160,10 @@ impl MazeGenerator {
         let mut maze = Grid::new_clone(size, MazeCell::Wall);
         for (coord, cell) in self.grid.enumerate() {
             let maze_cell_coord = coord * 2;
-            if cell.in_maze {
-                if let Some(maze_cell) = maze.get_mut(maze_cell_coord) {
+            if cell.in_maze
+                && let Some(maze_cell) = maze.get_mut(maze_cell_coord) {
                     *maze_cell = MazeCell::Passage;
                 }
-            }
             if cell.passages.east {
                 let coord = maze_cell_coord + ICoord::new(1, 0);
                 if let Some(maze_cell) = maze.get_mut(coord) {

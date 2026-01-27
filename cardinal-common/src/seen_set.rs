@@ -83,14 +83,13 @@ impl SeenSet {
     }
 
     fn try_visit(&mut self, to_coord: ICoord, in_direction: CardinalCoord, cost: u32) -> Option<Visit> {
-        if let Some(cell) = self.grid.get_mut(to_coord) {
-            if cell.count != self.count || cost < cell.cost {
+        if let Some(cell) = self.grid.get_mut(to_coord)
+            && (cell.count != self.count || cost < cell.cost) {
                 cell.count = self.count;
                 cell.cost = cost;
                 cell.in_direction = Some(in_direction);
                 return Some(Visit);
             }
-        }
         None
     }
 

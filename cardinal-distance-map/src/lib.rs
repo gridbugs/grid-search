@@ -71,18 +71,17 @@ struct Prune {
 impl<'a, C: CanEnter> SearchInstance<'a, C> {
     fn prune(&self, prune: Prune) -> bool {
         let remaining_distance = self.max_distance - prune.current_distance;
-        if let Some(best_possible_distance_through_cell) = prune.distance_to_goal.checked_sub(remaining_distance) {
-            if best_possible_distance_through_cell > self.search_state.distance_to_goal {
+        if let Some(best_possible_distance_through_cell) = prune.distance_to_goal.checked_sub(remaining_distance)
+            && best_possible_distance_through_cell > self.search_state.distance_to_goal {
                 return true;
             }
-        }
         false
     }
     fn consider(&mut self, context: &mut SearchContext, step: Step, distance: Distance) {
-        if let Some(Visit) = context.seen_set.try_visit_step(step, distance) {
-            if self.can_enter.can_step(step) {
-                if let Some(distance_to_goal) = self.distance_map.distance(step.to_coord) {
-                    if distance <= self.max_distance {
+        if let Some(Visit) = context.seen_set.try_visit_step(step, distance)
+            && self.can_enter.can_step(step)
+                && let Some(distance_to_goal) = self.distance_map.distance(step.to_coord)
+                    && distance <= self.max_distance {
                         if self.prune(Prune {
                             current_distance: distance,
                             distance_to_goal,
@@ -95,9 +94,6 @@ impl<'a, C: CanEnter> SearchInstance<'a, C> {
                         }
                         context.queue.push_back(SearchNode { step, distance });
                     }
-                }
-            }
-        }
     }
 }
 
@@ -154,22 +150,20 @@ impl DistanceMap {
         }
         for direction in CardinalDirections {
             let neighbour_coord = coord + direction.coord();
-            if let Some(distance) = self.distance(neighbour_coord) {
-                if distance <= shortest_distance {
+            if let Some(distance) = self.distance(neighbour_coord)
+                && distance <= shortest_distance {
                     shortest_distance = distance;
                     direction_to_best_neighbour = Some(direction);
                 }
-            }
         }
         direction_to_best_neighbour
     }
 
     pub fn distance(&self, coord: ICoord) -> Option<Distance> {
-        if let Some(cell) = self.grid.get(coord) {
-            if cell.count == self.count {
+        if let Some(cell) = self.grid.get(coord)
+            && cell.count == self.count {
                 return Some(cell.distance);
             }
-        }
         None
     }
 }
@@ -208,9 +202,9 @@ impl PopulateContext {
                 if can_enter.can_step(Step {
                     to_coord: neighbour_coord,
                     in_direction: UnitCoord::from_cardinal_direction(direction),
-                }) {
-                    if let Some(cell) = distance_map.grid.get_mut(neighbour_coord) {
-                        if cell.count != distance_map.count {
+                })
+                    && let Some(cell) = distance_map.grid.get_mut(neighbour_coord)
+                        && cell.count != distance_map.count {
                             cell.count = distance_map.count;
                             cell.distance = neighbour_distance;
                             if neighbour_distance != max_distance {
@@ -220,8 +214,6 @@ impl PopulateContext {
                                 });
                             }
                         }
-                    }
-                }
             }
         }
     }
@@ -255,9 +247,9 @@ impl PopulateContext {
                 if can_enter.can_step(Step {
                     to_coord: neighbour_coord,
                     in_direction: UnitCoord::from_cardinal_direction(direction),
-                }) {
-                    if let Some(cell) = distance_map.grid.get_mut(neighbour_coord) {
-                        if cell.count != distance_map.count {
+                })
+                    && let Some(cell) = distance_map.grid.get_mut(neighbour_coord)
+                        && cell.count != distance_map.count {
                             cell.count = distance_map.count;
                             cell.distance = neighbour_distance;
                             self.queue.push_front(PopulateNode {
@@ -265,8 +257,6 @@ impl PopulateContext {
                                 distance: neighbour_distance,
                             });
                         }
-                    }
-                }
             }
         }
         if self.queue.is_empty() {
@@ -286,8 +276,8 @@ impl PopulateContext {
             let neighbour_distance = distance + 1;
             for direction in CardinalDirections {
                 let neighbour_coord = coord + direction.coord();
-                if let Some(cell) = distance_map.grid.get_mut(neighbour_coord) {
-                    if cell.count == distance_map.count - 1 {
+                if let Some(cell) = distance_map.grid.get_mut(neighbour_coord)
+                    && cell.count == distance_map.count - 1 {
                         cell.count += 1;
                         cell.distance = neighbour_distance;
                         self.queue.push_front(PopulateNode {
@@ -295,7 +285,6 @@ impl PopulateContext {
                             distance: neighbour_distance,
                         });
                     }
-                }
             }
         }
     }
