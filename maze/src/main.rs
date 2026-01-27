@@ -15,6 +15,6 @@ fn main() {
             };
             print!("{}", ch);
         }
-        println!("");
+        println!();
     }
 }

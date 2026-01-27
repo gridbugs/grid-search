@@ -26,10 +26,7 @@ impl PartialEq for Node {
 
 impl PartialOrd for Node {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match other.cost_plus_heuristic.partial_cmp(&self.cost_plus_heuristic) {
-            Some(Ordering::Equal) => self.cost.partial_cmp(&other.cost),
-            other => other,
-        }
+        Some(self.cmp(other))
     }
 }
 

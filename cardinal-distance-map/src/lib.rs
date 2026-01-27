@@ -147,7 +147,7 @@ impl DistanceMap {
     }
 
     pub fn direction_to_best_neighbour(&self, coord: Coord) -> Option<CardinalDirection> {
-        let mut shortest_distance = std::u32::MAX;
+        let mut shortest_distance = u32::MAX;
         let mut direction_to_best_neighbour = None;
         if let Some(distance) = self.distance(coord) {
             shortest_distance = distance;

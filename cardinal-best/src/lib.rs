@@ -54,10 +54,8 @@ impl Context {
 
     fn consider<B: BestSearch>(&mut self, best_search: &mut B, step: Step, depth: Depth) {
         if let Some(Visit) = self.seen_set.try_visit_step(step, depth) {
-            if best_search.can_step_updating_best(step) {
-                if !best_search.is_at_max_depth(depth) {
-                    self.queue.push_back(Node { step, depth });
-                }
+            if best_search.can_step_updating_best(step) && !best_search.is_at_max_depth(depth) {
+                self.queue.push_back(Node { step, depth });
             }
         }
     }

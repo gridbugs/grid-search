@@ -138,12 +138,10 @@ impl MazeGenerator {
             } else {
                 self.add_cell_at(coord_b);
             }
+        } else if in_maze_b {
+            self.add_cell_at(coord_a);
         } else {
-            if in_maze_b {
-                self.add_cell_at(coord_a);
-            } else {
-                return None;
-            }
+            return None;
         }
         self.add_passage(wall);
         Some(())

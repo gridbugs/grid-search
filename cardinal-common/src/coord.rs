@@ -58,7 +58,7 @@ impl CardinalCoord {
         }
     }
     pub const fn magnitude(self) -> u32 {
-        (self.0.x + self.0.y).abs() as u32
+        (self.0.x + self.0.y).unsigned_abs()
     }
     pub fn to_unit_coord(self) -> UnitCoord {
         match self.0.x.cmp(&0) {

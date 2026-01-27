@@ -43,7 +43,7 @@ pub struct Path {
 }
 
 impl Path {
-    pub fn iter(&self) -> PathIter {
+    pub fn iter(&self) -> PathIter<'_> {
         PathIter {
             iter: self.steps.iter(),
         }

@@ -64,7 +64,7 @@ impl SeenSet {
         let mut coord = end;
         let mut ret = None;
         while let Some(in_direction) = cell.in_direction {
-            coord = coord - in_direction.to_coord();
+            coord -= in_direction.to_coord();
             cell = self.grid.get_checked(coord);
             debug_assert_eq!(
                 cell.count, self.count,
